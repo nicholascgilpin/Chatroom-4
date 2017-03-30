@@ -269,11 +269,28 @@ void RunServer(std::string port_no) {
 int main(int argc, char** argv) {
   
   std::string port = "3055";
+	
+	// The hostnames of each master server
+	std::string host_x = "";
+	std::string host_y = "";
+	std::string host_z = "";
+	
   int opt = 0;
-  while ((opt = getopt(argc, argv, "p:")) != -1){
+  while ((opt = getopt(argc, argv, "p:x:y:z:")) != -1){
     switch(opt) {
       case 'p':
-          port = optarg;break;
+          port = optarg;
+					break;
+			case 'x':
+					host_x = optarg;
+					break;
+			case 'y':
+					host_y = optarg;
+
+					break;
+			case 'z':
+					host_z = optarg;
+					break;
       default:
 	  std::cerr << "Invalid Command Line Argument\n";
     }
