@@ -38,6 +38,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 
 #include <grpc++/grpc++.h>
@@ -175,30 +176,52 @@ class MessengerClient {
   }
 
   //Calls the Chat stub function which uses a bidirectional RPC to communicate
-  void Chat (const std::string& username) {
+  void Chat (const std::string& username, const std::string& messages, const std::string& usec) {
     ClientContext context;
 
     std::shared_ptr<ClientReaderWriter<Message, Message>> stream(
 	stub_->Chat(&context));
 
     //Thread used to read chat messages and send them to the server
-    std::thread writer([username, stream]() { 
-      std::string input = "Set Stream";
-      Message m = MakeMessage(username, input);
-      stream->Write(m);
-      std::cout << "Enter chat messages: \n";
-      while(getline(std::cin, input)){
-        m = MakeMessage(username, input);
+    std::thread writer([username, messages, usec, stream]() {  
+	  if(usec == "n") { 
+        std::string input = "Set Stream";
+        Message m = MakeMessage(username, input);
         stream->Write(m);
+        std::cout << "Enter chat messages: \n";
+        while(getline(std::cin, input)){
+          m = MakeMessage(username, input);
+          stream->Write(m);
+        }
+        stream->WritesDone();
       }
-      stream->WritesDone();
-    });
+	  else {
+		std::string input = "Set Stream";
+        Message m = MakeMessage(username, input);
+        stream->Write(m);
+		int msgs = stoi(messages);
+		int u = stoi(usec);
+		time_t start, end;
+        std::cout << "Enter chat messages: \n";
+		time(&start);
+        for(int i=0; i<msgs; i++) {
+          input = "hello" + std::to_string(i);
+		  m = MakeMessage(username, input);
+          stream->Write(m);
+		  std::cout << input << '\n';
+		  usleep(u);
+        }
+		time(&end);
+		std::cout << "Elapsed time: " << (double)difftime(end,start) << std::endl;
+        stream->WritesDone();
+	  }
+	});
 
     //Thread used to display chat messages from users that this client follows 
     std::thread reader([username, stream]() {
        Message m;
        while(stream->Read(&m)){
-	  std::cout << m.username() << " -- " << m.msg() << std::endl;
+	     std::cout << m.username() << " -- " << m.msg() << std::endl;
        }
     });
 
@@ -259,9 +282,11 @@ int main(int argc, char** argv) {
 
   std::string hostname = "localhost";
   std::string username = "default";
-  std::string port = "3010";
+  std::string port = "3055";
+  std::string messages = "10000";
+  std::string usec = "n";
   int opt = 0;
-  while ((opt = getopt(argc, argv, "h:u:p:")) != -1){
+  while ((opt = getopt(argc, argv, "h:u:p:m:t:")) != -1){
     switch(opt) {
       case 'h':
 	  hostname = optarg;break;
@@ -269,6 +294,10 @@ int main(int argc, char** argv) {
           username = optarg;break;
       case 'p':
           port = optarg;break;
+	  case 'm':
+		  messages = optarg;break;
+	  case 't':
+		  usec = optarg;break;
       default: 
 	  std::cerr << "Invalid Command Line Argument\n";
     }
@@ -298,7 +327,7 @@ int main(int argc, char** argv) {
 	break;
     }
     //Once chat mode is enabled, call Chat stub function and read input
-    messenger->Chat(username);
+    messenger->Chat(username, messages, usec);
   }
   return 0;
 }
