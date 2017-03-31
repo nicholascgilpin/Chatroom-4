@@ -65,6 +65,10 @@ using hw2::Request;
 using hw2::Reply;
 using hw2::MessengerServer;
 
+// Global Variables ////////////////////////////////////////////////////////////
+bool isMaster = false;
+bool isLeader = false;
+
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -98,7 +102,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
   //Sends the list of total rooms and joined rooms to the client
   Status List(ServerContext* context, const Request* request, ListReply* list_reply) override {
     Client user = client_db[find_user(request->username())];
-    int index = 0;
+    // int index = 0; // Possible uneeded
     for(Client c : client_db){
       list_reply->add_all_rooms(c.username);
     }
@@ -218,7 +222,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
         }
         Message new_msg; 
  	//Send the newest messages to the client to be displayed
-	for(int i = 0; i<newest_twenty.size(); i++){
+	for(uint i = 0; i<newest_twenty.size(); i++){
 	  new_msg.set_msg(newest_twenty[i]);
           stream->Write(new_msg);
         }    
@@ -270,13 +274,14 @@ int main(int argc, char** argv) {
   
   std::string port = "3055";
 	
-	// The hostnames of each master server
+	// The hostnames of each server
 	std::string host_x = "";
 	std::string host_y = "";
-	std::string host_z = "";
+	std::string reliableServer = "";
 	
+	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
-  while ((opt = getopt(argc, argv, "p:x:y:z:")) != -1){
+  while ((opt = getopt(argc, argv, "p:x:y:r:ml")) != -1){
     switch(opt) {
       case 'p':
           port = optarg;
@@ -286,10 +291,15 @@ int main(int argc, char** argv) {
 					break;
 			case 'y':
 					host_y = optarg;
-
 					break;
-			case 'z':
-					host_z = optarg;
+			case 'r':
+					reliableServer = optarg;
+					break;
+			case 'l':
+					isLeader = true;
+					break;
+			case 'm':
+					isMaster = true;
 					break;
       default:
 	  std::cerr << "Invalid Command Line Argument\n";
