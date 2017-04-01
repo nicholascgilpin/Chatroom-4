@@ -64,6 +64,7 @@ using hw2::ListReply;
 using hw2::Request;
 using hw2::Reply;
 using hw2::MessengerServer;
+using hw2::ServerChat;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
@@ -96,7 +97,16 @@ int find_user(std::string username){
   return -1;
 }
 
-// Logic and data behind the server's behavior.
+// Interserver chat Service
+class ServerChatImpl final : public ServerChat::Service {
+	// Asks for a reply and restarts the server if no replay is recieved
+	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
+		out->set_msg("boop");
+		return Status::OK;
+	}
+};
+
+// Logic and data behind the server-client behavior.
 class MessengerServiceImpl final : public MessengerServer::Service {
   
   //Sends the list of total rooms and joined rooms to the client
@@ -251,6 +261,26 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Secondary service (for fault tolerence) to listen for connecting workers
+void RunServerCom(std::string port_no) {
+	std::string server_address = "0.0.0.0:"+port_no;
+  ServerChatImpl service;
+
+  ServerBuilder builder;
+  // Listen on the given address without any authentication mechanism.
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  // Register "service" as the instance through which we'll communicate with
+  // clients. In this case it corresponds to an *synchronous* service.
+  builder.RegisterService(&service);
+  // Finally assemble the server.
+  std::unique_ptr<Server> server(builder.BuildAndStart());
+  std::cout << "Server listening for works on " << server_address << std::endl;
+
+  // Wait for the server to shutdown. Note that some other thread must be
+  // responsible for shutting down the server for this call to ever return.
+  server->Wait();
+}
+
 void RunServer(std::string port_no) {
   std::string server_address = "0.0.0.0:"+port_no;
   MessengerServiceImpl service;
@@ -263,7 +293,7 @@ void RunServer(std::string port_no) {
   builder.RegisterService(&service);
   // Finally assemble the server.
   std::unique_ptr<Server> server(builder.BuildAndStart());
-  std::cout << "Server listening on " << server_address << std::endl;
+  std::cout << "Server listening for clients on " << server_address << std::endl;
 
   // Wait for the server to shutdown. Note that some other thread must be
   // responsible for shutting down the server for this call to ever return.
@@ -273,6 +303,7 @@ void RunServer(std::string port_no) {
 int main(int argc, char** argv) {
   
   std::string port = "3055";
+	std::string workerPort = "8888";
 	
 	// The hostnames of each server
 	std::string host_x = "";
@@ -305,6 +336,8 @@ int main(int argc, char** argv) {
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
+	
+	RunServerCom(workerPort);
   RunServer(port);
 
   return 0;

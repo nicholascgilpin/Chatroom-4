@@ -44,6 +44,11 @@ service MessengerServer {
   rpc Chat (stream Message) returns (stream Message) {} 
 }
 
+// Enables communication between servers
+service ServerChat{
+	// Asks for a reply and restarts the server if no replay is recieved
+	rpc pulseCheck (Reply) returns (Reply) {}
+}
 message ListReply {
   repeated string all_rooms = 1;
   repeated string joined_rooms = 2;
