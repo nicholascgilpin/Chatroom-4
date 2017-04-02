@@ -105,8 +105,8 @@ int find_user(std::string username){
 class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
-		out->set_msg("b");
-		// @TODO: Send back PID
+		std::string pid = std::to_string(getpid());
+		out->set_msg("Worker port:" + workerPort + " PID:" + pid);
 		return Status::OK;
 	}
 };
@@ -351,7 +351,7 @@ int main(int argc, char** argv) {
 	
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
-  while ((opt = getopt(argc, argv, "w:p:x:y:r:ml")) != -1){
+  while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
     switch(opt) {
       case 'p':
           port = optarg;
@@ -387,10 +387,10 @@ int main(int argc, char** argv) {
 	pthread_t thread_id = -1;
 	// int wport = std::stoi(workerPort);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
+	ServerChatClient ServerChat(grpc::CreateChannel(
+		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
+		ServerChat.pulseCheck();
   RunServer(port);
 
-	// ServerChatClient ServerChat(grpc::CreateChannel(
-	// 		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-	// ServerChat.pulseCheck();
   return 0;
 }
