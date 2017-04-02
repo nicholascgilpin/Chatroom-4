@@ -71,6 +71,8 @@ using grpc::ClientContext;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
+std::string workerPort = "8888"; // Port for workers to connect to
+std::string workerToConnect = "8889"; // Port for this process to contact
 
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -299,8 +301,8 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 };
 
 // Secondary service (for fault tolerence) to listen for connecting workers
-void RunServerCom(std::string port_no) {
-	std::string server_address = "0.0.0.0:"+port_no;
+void* RunServerCom(void* invalidMemory) {
+	std::string server_address = "0.0.0.0:"+workerPort;
   ServerChatImpl service;
 
   ServerBuilder builder;
@@ -316,6 +318,7 @@ void RunServerCom(std::string port_no) {
   // Wait for the server to shutdown. Note that some other thread must be
   // responsible for shutting down the server for this call to ever return.
   server->Wait();
+	return 0;
 }
 
 void RunServer(std::string port_no) {
@@ -340,8 +343,6 @@ void RunServer(std::string port_no) {
 int main(int argc, char** argv) {
   
   std::string port = "3055"; // Port for clients to connect to
-	std::string workerPort = "8888"; // Port for workers to connect to
-	std::string workerToConnect = "8889"; // Port for this process to contact
 	
 	// The hostnames of each server
 	std::string host_x = "";
@@ -381,13 +382,15 @@ int main(int argc, char** argv) {
     }
   }
 	
+	//@TODO: This won't run until moved to another thread
+	//@TODO: Add startup ports to scripts
+	pthread_t thread_id = -1;
+	// int wport = std::stoi(workerPort);
+	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
   RunServer(port);
 
-	//@TODO: This won't run until moved to another thread
-	RunServerCom(workerPort);
-	
-	ServerChatClient ServerChat(grpc::CreateChannel(
-			"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-	ServerChat.pulseCheck();
+	// ServerChatClient ServerChat(grpc::CreateChannel(
+	// 		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
+	// ServerChat.pulseCheck();
   return 0;
 }
