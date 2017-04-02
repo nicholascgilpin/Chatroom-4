@@ -65,6 +65,8 @@ using hw2::Request;
 using hw2::Reply;
 using hw2::MessengerServer;
 using hw2::ServerChat;
+using grpc::Channel;
+using grpc::ClientContext;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
@@ -97,13 +99,48 @@ int find_user(std::string username){
   return -1;
 }
 
-// Interserver chat Service
+// Recieving side of interserver chat Service
 class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
-		out->set_msg("boop");
+		out->set_msg("b");
+		// @TODO: Send back PID
 		return Status::OK;
 	}
+};
+
+// Sending side of interserver chat Service
+class ServerChatClient {
+private:
+	std::unique_ptr<ServerChat::Stub> stub_;
+public:
+ ServerChatClient(std::shared_ptr<Channel> channel)
+	 : stub_(ServerChat::NewStub(channel)) {}
+
+	 void pulseCheck() {
+		 // Data we are sending to the server.
+		 Reply request;
+		 request.set_msg("a");
+
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->pulseCheck(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+			 std::cout << "Server Still Alive: " << reply.msg() << std::endl;
+		 } else {
+			 std::cout << "Server with pid: " << reply.msg() << " has died!" << std::endl;
+			 std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
+		 }
+	 }
 };
 
 // Logic and data behind the server-client behavior.
@@ -214,7 +251,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
         user_file << fileinput;
       //If message = "Set Stream", print the first 20 chats from the people you follow
       else{
-        if(c->stream==0)
+        if(c->stream == 0)
       	  c->stream = stream;
         std::string line;
         std::vector<std::string> newest_twenty;
@@ -302,8 +339,9 @@ void RunServer(std::string port_no) {
 
 int main(int argc, char** argv) {
   
-  std::string port = "3055";
-	std::string workerPort = "8888";
+  std::string port = "3055"; // Port for clients to connect to
+	std::string workerPort = "8888"; // Port for workers to connect to
+	std::string workerToConnect = "8889"; // Port for this process to contact
 	
 	// The hostnames of each server
 	std::string host_x = "";
@@ -312,7 +350,7 @@ int main(int argc, char** argv) {
 	
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
-  while ((opt = getopt(argc, argv, "p:x:y:r:ml")) != -1){
+  while ((opt = getopt(argc, argv, "w:p:x:y:r:ml")) != -1){
     switch(opt) {
       case 'p':
           port = optarg;
@@ -332,13 +370,24 @@ int main(int argc, char** argv) {
 			case 'm':
 					isMaster = true;
 					break;
-      default:
+			case 'w':
+					workerPort = optarg;
+					break;
+			case 'c':
+					workerToConnect = optarg;
+					break;
+	      default:
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
 	
-	RunServerCom(workerPort);
   RunServer(port);
 
+	//@TODO: This won't run until moved to another thread
+	RunServerCom(workerPort);
+	
+	ServerChatClient ServerChat(grpc::CreateChannel(
+			"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
+	ServerChat.pulseCheck();
   return 0;
 }
