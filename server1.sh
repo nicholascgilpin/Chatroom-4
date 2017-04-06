@@ -5,11 +5,11 @@ unreliableServer2 = "lenss-comp4.cse.tamu.edu"
 reliableServer = "lenss-comp1.cse.tamu.edu"
 #
 # Start 3 worker processes
-./fbsd -x $unreliableServer2 -r $reliableServer &
+./fbsd -x $unreliableServer2 -r $reliableServer -l -w 10001 &
 export pid1=$! # Get pid of last background process
-./fbsd -x $unreliableServer2 -r $reliableServer &
+./fbsd -x $unreliableServer2 -r $reliableServer -w 10002 -c 10001 &
 export pid2=$! # Get pid of last background process
-./fbsd -x $unreliableServer2 -r $reliableServer &
+./fbsd -x $unreliableServer2 -r $reliableServer -w 10003 -c 10001 &
 export pid3=$! # Get pid of last background process
 echo "-------------------------------------------------------------------------"
 echo "Press Enter to kill all processes started by this script..."

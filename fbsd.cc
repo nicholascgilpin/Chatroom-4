@@ -71,8 +71,9 @@ using grpc::ClientContext;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
-std::string workerPort = "8888"; // Port for workers to connect to
-std::string workerToConnect = "8889"; // Port for this process to contact
+std::string workerPortDefault = "10001";
+std::string workerPort = workerPortDefault; // Port for workers to connect to
+std::string workerToConnect = "10002"; // Port for this process to contact
 
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -119,6 +120,7 @@ public:
  ServerChatClient(std::shared_ptr<Channel> channel)
 	 : stub_(ServerChat::NewStub(channel)) {}
 
+	 // Checks if other endpoint is responsive
 	 void pulseCheck() {
 		 // Data we are sending to the server.
 		 Reply request;
@@ -300,6 +302,22 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Monitors and restarts other local prcesses if they crash
+void* heartBeatMonitor(void* invalidMemory){
+	// Connect to local lead server if not the local lead
+	if (workerPort == workerPortDefault){}
+	else{
+		ServerChatClient ServerChat(grpc::CreateChannel(
+			"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
+	}
+	// send leader port and pid
+	// leader sends back other ports
+	// worker connects to other ports
+	// everyone takes pulses
+	// if worker down, restarts
+	// if leader down, reelect a leader, then start another worker
+	return 0;
+}
 // Secondary service (for fault tolerence) to listen for connecting workers
 void* RunServerCom(void* invalidMemory) {
 	std::string server_address = "0.0.0.0:"+workerPort;
@@ -382,14 +400,12 @@ int main(int argc, char** argv) {
     }
   }
 	
-	//@TODO: This won't run until moved to another thread
-	//@TODO: Add startup ports to scripts
-	pthread_t thread_id = -1;
-	// int wport = std::stoi(workerPort);
-	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
-	ServerChatClient ServerChat(grpc::CreateChannel(
-		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-		ServerChat.pulseCheck();
+	pthread_t serverChat_tid, heartbeat_tid = -1;
+	//Start accepting server connections
+	pthread_create(&serverChat_tid, NULL, &RunServerCom, (void*) NULL);
+	//Monitor other local server heartbeats
+	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
+	//Start serving clients
   RunServer(port);
 
   return 0;
