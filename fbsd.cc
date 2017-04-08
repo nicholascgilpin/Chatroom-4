@@ -67,12 +67,16 @@ using hw2::MessengerServer;
 using hw2::ServerChat;
 using grpc::Channel;
 using grpc::ClientContext;
+// Forwards ////////////////////////////////////////////////////////////////////
+class ServerChatClient;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
+std::vector<std::string> defaultWorkerPorts;
+std::vector<ServerChatClient> localWorkersComs;
 
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -321,6 +325,26 @@ void* RunServerCom(void* invalidMemory) {
 	return 0;
 }
 
+void* setComLinks(void* invalidMemory){
+	std::string contactInfo = "";
+	if (defaultWorkerPorts.size() == 0){
+		std::cout << "Error: Default ports uninitialized" << '\n';
+	}
+	for (size_t i = 0; i < defaultWorkerPorts.size(); i++) {
+		if (defaultWorkerPorts[i] == workerPort){
+			// Don't connect to self
+		}
+		else{
+			contactInfo = "localhost:"+defaultWorkerPorts[i];
+			std::cout << "Connecting: " << contactInfo << '\n';
+			localWorkersComs.push_back(
+				ServerChatClient(grpc::CreateChannel(
+		  	contactInfo, grpc::InsecureChannelCredentials())));
+		}
+	}
+	return 0;
+}
+
 void RunServer(std::string port_no) {
   std::string server_address = "0.0.0.0:"+port_no;
   MessengerServiceImpl service;
@@ -341,10 +365,11 @@ void RunServer(std::string port_no) {
 }
 
 int main(int argc, char** argv) {
-  
+  // Initialize default values
   std::string port = "3055"; // Port for clients to connect to
-	
-	// The hostnames of each server
+	defaultWorkerPorts.push_back("10001");
+	defaultWorkerPorts.push_back("10002");
+	defaultWorkerPorts.push_back("10003");
 	std::string host_x = "";
 	std::string host_y = "";
 	std::string reliableServer = "";
@@ -384,12 +409,11 @@ int main(int argc, char** argv) {
 	
 	//@TODO: This won't run until moved to another thread
 	//@TODO: Add startup ports to scripts
-	pthread_t thread_id = -1;
+	pthread_t thread_id, comLinks_tid = -1;
 	// int wport = std::stoi(workerPort);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
-	ServerChatClient ServerChat(grpc::CreateChannel(
-		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-		ServerChat.pulseCheck();
+	// Set up communication links between worker servers
+	pthread_create(&comLinks_tid, NULL, &setComLinks, (void*) NULL);
   RunServer(port);
 
   return 0;
