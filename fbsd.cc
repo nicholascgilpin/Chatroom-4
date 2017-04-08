@@ -67,13 +67,16 @@ using hw2::MessengerServer;
 using hw2::ServerChat;
 using grpc::Channel;
 using grpc::ClientContext;
+// Forwards ////////////////////////////////////////////////////////////////////
+class ServerChatClient;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
-std::string workerPortDefault = "10001";
-std::string workerPort = workerPortDefault; // Port for workers to connect to
-std::string workerToConnect = "10002"; // Port for this process to contact
+std::string workerPort = "8888"; // Port for workers to connect to
+std::string workerToConnect = "8889"; // Port for this process to contact
+std::vector<std::string> defaultWorkerPorts;
+std::vector<ServerChatClient> localWorkersComs;
 
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -305,11 +308,11 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 // Monitors and restarts other local prcesses if they crash
 void* heartBeatMonitor(void* invalidMemory){
 	// Connect to local lead server if not the local lead
-	if (workerPort == workerPortDefault){}
-	else{
-		ServerChatClient ServerChat(grpc::CreateChannel(
-			"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-	}
+	// if (workerPort == workerPortDefault){}
+	// else{
+	// 	ServerChatClient ServerChat(grpc::CreateChannel(
+	// 		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
+	// }
 	// send leader port and pid
 	// leader sends back other ports
 	// worker connects to other ports
@@ -339,6 +342,26 @@ void* RunServerCom(void* invalidMemory) {
 	return 0;
 }
 
+void* setComLinks(void* invalidMemory){
+	std::string contactInfo = "";
+	if (defaultWorkerPorts.size() == 0){
+		std::cout << "Error: Default ports uninitialized" << '\n';
+	}
+	for (size_t i = 0; i < defaultWorkerPorts.size(); i++) {
+		if (defaultWorkerPorts[i] == workerPort){
+			// Don't connect to self
+		}
+		else{
+			contactInfo = "localhost:"+defaultWorkerPorts[i];
+			std::cout << "Connecting: " << contactInfo << '\n';
+			localWorkersComs.push_back(
+				ServerChatClient(grpc::CreateChannel(
+		  	contactInfo, grpc::InsecureChannelCredentials())));
+		}
+	}
+	return 0;
+}
+
 void RunServer(std::string port_no) {
   std::string server_address = "0.0.0.0:"+port_no;
   MessengerServiceImpl service;
@@ -359,10 +382,11 @@ void RunServer(std::string port_no) {
 }
 
 int main(int argc, char** argv) {
-  
+  // Initialize default values
   std::string port = "3055"; // Port for clients to connect to
-	
-	// The hostnames of each server
+	defaultWorkerPorts.push_back("10001");
+	defaultWorkerPorts.push_back("10002");
+	defaultWorkerPorts.push_back("10003");
 	std::string host_x = "";
 	std::string host_y = "";
 	std::string reliableServer = "";
@@ -400,12 +424,14 @@ int main(int argc, char** argv) {
     }
   }
 	
-	pthread_t serverChat_tid, heartbeat_tid = -1;
-	//Start accepting server connections
-	pthread_create(&serverChat_tid, NULL, &RunServerCom, (void*) NULL);
-	//Monitor other local server heartbeats
+	pthread_t thread_id, comLinks_tid, heartbeat_tid = -1;
+	// int wport = std::stoi(workerPort);
+	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
+	// Set up communication links between worker servers
+	pthread_create(&comLinks_tid, NULL, &setComLinks, (void*) NULL);
+	// Monitor other local server heartbeats
 	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
-	//Start serving clients
+	// Start servering clients
   RunServer(port);
 
   return 0;
