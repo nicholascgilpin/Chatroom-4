@@ -73,11 +73,14 @@ class ServerChatClient;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
+std::string port = "3055"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
 std::vector<std::string> defaultWorkerPorts;
 std::vector<ServerChatClient> localWorkersComs;
-
+std::string host_x = "";
+std::string host_y = "";
+std::string reliableServer = "";
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -305,8 +308,31 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Starts a new server process on the same worker port as the crashed process
+void startNewServer(std::string missingWorkerPort){
+	std::string cmd = "./fbsd";
+	if (isMaster){
+		cmd = cmd + " -p " + port;
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -y " + host_y;
+		cmd = cmd + " -m";
+		cmd = cmd + " -w " + missingWorkerPort;
+	}
+	else{
+		cmd = cmd + " -p " + port;
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -r " + reliableServer;
+		cmd = cmd + " -w " + missingWorkerPort;
+	}
+	sleep(5);
+	system(cmd.c_str());
+	sleep(5);
+}
 // Monitors and restarts other local prcesses if they crash
 void* heartBeatMonitor(void* invalidMemory){
+	//@TODO: Make more robbust by using cmd = arg0 of main cmd lind input
+	std::string missingWorkerPort = ""; //@TODO: Figure out which port is missing
+	// startNewServer("9998");
 	// Connect to local lead server if not the local lead
 	// if (workerPort == workerPortDefault){}
 	// else{
@@ -383,13 +409,9 @@ void RunServer(std::string port_no) {
 
 int main(int argc, char** argv) {
   // Initialize default values
-  std::string port = "3055"; // Port for clients to connect to
 	defaultWorkerPorts.push_back("10001");
 	defaultWorkerPorts.push_back("10002");
 	defaultWorkerPorts.push_back("10003");
-	std::string host_x = "";
-	std::string host_y = "";
-	std::string reliableServer = "";
 	
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
