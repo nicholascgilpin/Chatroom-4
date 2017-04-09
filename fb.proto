@@ -42,6 +42,7 @@ service MessengerServer {
   rpc Leave (Request) returns (Reply) {}
   // Bidirectional streaming RPC
   rpc Chat (stream Message) returns (stream Message) {} 
+  rpc SendCredentials (Credentials) returns (Credentials) {}
 }
 
 // Enables communication between servers
@@ -57,6 +58,12 @@ message ListReply {
 message Request {
   string username = 1;
   repeated string arguments = 2;
+}
+
+message Credentials {
+  string hostname = 1;
+  string portnumber = 2;
+  string confirmation = 3;
 }
 
 message Reply {

@@ -55,6 +55,7 @@ using hw2::Message;
 using hw2::ListReply;
 using hw2::Request;
 using hw2::Reply;
+using hw2::Credentials;
 using hw2::MessengerServer;
 
 //Helper function used to create a Message object given a username and message
@@ -71,8 +72,12 @@ Message MakeMessage(const std::string& username, const std::string& msg) {
 
 class MessengerClient {
  public:
-  MessengerClient(std::shared_ptr<Channel> channel)
-      : stub_(MessengerServer::NewStub(channel)) {}
+  MessengerClient(std::shared_ptr<Channel> channel, std::string name, std::string address){
+      clientStub_ = MessengerServer::NewStub(channel);
+      username = name;
+      workerAddress = address;
+  }
+
 
   //Calls the List stub function and prints out room names
   void List(const std::string& username){
@@ -86,7 +91,7 @@ class MessengerClient {
     //Context for the client
     ClientContext context;
   
-    Status status = stub_->List(&context, request, &list_reply);
+    Status status = clientStub_->List(&context, request, &list_reply);
 
     //Loop through list_reply.all_rooms and list_reply.joined_rooms
     //Print out the name of each room 
@@ -118,7 +123,7 @@ class MessengerClient {
 
     ClientContext context;
 
-    Status status = stub_->Join(&context, request, &reply);
+    Status status = clientStub_->Join(&context, request, &reply);
 
     if(status.ok()){
       std::cout << reply.msg() << std::endl;
@@ -141,7 +146,7 @@ class MessengerClient {
 
     ClientContext context;
 
-    Status status = stub_->Leave(&context, request, &reply);
+    Status status = clientStub_->Leave(&context, request, &reply);
 
     if(status.ok()){
       std::cout << reply.msg() << std::endl;
@@ -153,7 +158,66 @@ class MessengerClient {
     }
   }
 
-  //Called when a client is run
+  //Sends the client to the master server, then sends the client to the first available worker.
+  //Does not yet actually send client to a new worker. 
+  //Needs to be re-evaluated once workers are communicating with masters
+  void SendCredentials(const std::string& host, const std::string& port){
+
+    std::cout<<"In SendCredentials clientside" << std::endl;
+
+    if(clientStub_ == NULL){
+      std::cout<<"Service not initialized, check again asshat." << std::endl;
+      return;
+    }
+
+    Credentials credentials;
+    
+    credentials.set_hostname(host);
+    credentials.set_portnumber(port);
+
+    Credentials reply;
+
+    ClientContext context;
+    std::cout<<"Client stub sending to server" << std::endl;
+    Status status = clientStub_->SendCredentials(&context, credentials, &reply);
+
+    if(status.ok()){
+
+      std::cout<<"Made it into sendcredentials"<<std::endl;
+
+      if(reply.confirmation() == "toMaster"){
+        std::cout<<"Made it to be redirected from worker to master"<<std::endl;
+      //Needs to reconnect twice
+        std::string login_info = reply.hostname()+ ":" +reply.portnumber();
+        std::shared_ptr<Channel> channel = grpc::CreateChannel(login_info, grpc::InsecureChannelCredentials());
+          clientStub_ = MessengerServer::NewStub(channel);
+
+        Credentials reply2;
+        ClientContext context2;
+        credentials.set_hostname(reply.hostname());
+        credentials.set_portnumber(reply.portnumber());
+
+        Status status = clientStub_->SendCredentials(&context2, credentials, &reply2);
+        if(status.ok()){
+          std::string login_info = reply2.hostname()+ ":" +reply2.portnumber();
+          std::shared_ptr<Channel> channel = grpc::CreateChannel(login_info, grpc::InsecureChannelCredentials());
+            clientStub_ = MessengerServer::NewStub(channel);
+        }
+      }
+      else{
+        std::cout<<"Made it to be redirected from Master to Worker"<<std::endl;
+        std::string login_info = reply.hostname()+ ":" +reply.portnumber();
+        std::shared_ptr<Channel> channel = grpc::CreateChannel(login_info, grpc::InsecureChannelCredentials());
+          clientStub_ = MessengerServer::NewStub(channel);
+      }
+    }
+    else{
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+    }
+  }
+
+
   std::string Login(const std::string& username){
     Request request;
     
@@ -163,7 +227,7 @@ class MessengerClient {
 
     ClientContext context;
 
-    Status status = stub_->Login(&context, request, &reply);
+    Status status = clientStub_->Login(&context, request, &reply);
 
     if(status.ok()){
       return reply.msg();
@@ -180,7 +244,7 @@ class MessengerClient {
     ClientContext context;
 
     std::shared_ptr<ClientReaderWriter<Message, Message>> stream(
-	stub_->Chat(&context));
+	clientStub_->Chat(&context));
 
     //Thread used to read chat messages and send them to the server
     std::thread writer([username, messages, usec, stream]() {  
@@ -232,7 +296,10 @@ class MessengerClient {
   }
 
  private:
+  std::string username;
+  std::string workerAddress;
   std::unique_ptr<MessengerServer::Stub> stub_;
+  std::unique_ptr<MessengerServer::Stub> clientStub_;
 };
 
 //Parses user input while the client is in Command Mode
@@ -306,9 +373,18 @@ int main(int argc, char** argv) {
   std::string login_info = hostname + ":" + port;
 
   //Create the messenger client with the login info
-  MessengerClient *messenger = new MessengerClient(grpc::CreateChannel(
-        login_info, grpc::InsecureChannelCredentials())); 
-  //Call the login stub function
+  std::shared_ptr<Channel> channel = grpc::CreateChannel(login_info, grpc::InsecureChannelCredentials());
+
+  MessengerClient *messenger = new MessengerClient(channel, username, login_info); 
+
+
+  //Call the Redirect function
+  std::cout<<"Beginning Redirect"<<std::endl;
+  //messenger = messenger->SendCredentials(hostname,port);
+  messenger->SendCredentials(hostname,port);
+  std::cout<<"End Redirect"<<std::endl;
+
+
   std::string response = messenger->Login(username);
   //If the username already exists, exit the client
   if(response == "Invalid Username"){
@@ -319,7 +395,7 @@ int main(int argc, char** argv) {
     std::cout << response << std::endl;
    
     std::cout << "Enter commands: \n";
-    std::string input;
+    std::string input; 
     //While loop that parses all of the command input
     while(getline(std::cin, input)){
       //If we have switched to chat mode, parse_input returns 1

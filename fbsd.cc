@@ -65,6 +65,7 @@ using hw2::Request;
 using hw2::Reply;
 using hw2::MessengerServer;
 using hw2::ServerChat;
+using hw2::Credentials;
 using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
@@ -75,7 +76,12 @@ bool isMaster = false;
 bool isLeader = false;
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
+std::string masterPort = "10001"; // Port for workers to connect to
+std::string masterHostname = "lenss-comp4"; // Port for this process to contact
 std::vector<std::string> defaultWorkerPorts;
+std::vector<std::string> defaultWorkerHostnames;
+
+;
 std::vector<ServerChatClient> localWorkersComs;
 
 //Client struct that holds a user's username, followers, and users they follow
@@ -302,7 +308,36 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     return Status::OK;
   }
 
+  //Sends the client to the master server, then sends the client to the first available worker. 
+  //Needs to be re-evaluated to actually connect client to new server
+  //But works for now, not finished
+  Status SendCredentials(ServerContext* context, const Credentials* credentials, Credentials* reply) override {
+    std::cout<<"In SendCredentials Serverside"<< std::endl;
+    std::string hostname = credentials->hostname();
+    std::string portnumber = credentials->portnumber();
+
+    if(!isMaster){
+      std::cout << "Redirecting client to Master: " << masterPort << std::endl;
+      reply->set_hostname(masterHostname);
+      reply->set_portnumber("3055");
+      reply->set_confirmation("toMaster");
+    }
+    else if (isMaster || isLeader){
+      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[0] << std::endl;
+      reply->set_hostname("localhost");
+      reply->set_portnumber("3055");
+      reply->set_confirmation("toWorker");
+    }
+    else{
+      std::cout<<"There's been an error in the redirect: SendCredentials.'\n'";
+      return Status::CANCELLED;
+    }
+    return Status::OK;
+  }
+
 };
+
+
 
 // Secondary service (for fault tolerence) to listen for connecting workers
 void* RunServerCom(void* invalidMemory) {
@@ -370,6 +405,10 @@ int main(int argc, char** argv) {
 	defaultWorkerPorts.push_back("10001");
 	defaultWorkerPorts.push_back("10002");
 	defaultWorkerPorts.push_back("10003");
+  defaultWorkerHostnames.push_back("lenss-comp4");
+  defaultWorkerHostnames.push_back("lenss-comp1");
+  defaultWorkerHostnames.push_back("lenss-comp3");
+
 	std::string host_x = "";
 	std::string host_y = "";
 	std::string reliableServer = "";
