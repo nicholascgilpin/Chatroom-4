@@ -76,14 +76,14 @@ bool isMaster = false;
 bool isLeader = false;
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
-std::string masterPort = "10001"; // Port for workers to connect to
-std::string masterHostname = "lenss-comp4"; // Port for this process to contact
+std::string masterPort = "10001"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
-
-;
 std::vector<ServerChatClient> localWorkersComs;
-
+static ServerChatClient* masterCom; // Connection to leading master
+std::string host_x = "";
+std::string host_y = "";
+std::string masterHostname = "lenss-comp4"; // Port for this process to contact
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -361,6 +361,7 @@ void* RunServerCom(void* invalidMemory) {
 }
 
 void* setComLinks(void* invalidMemory){
+	// Create connections with local workers
 	std::string contactInfo = "";
 	if (defaultWorkerPorts.size() == 0){
 		std::cout << "Error: Default ports uninitialized" << '\n';
@@ -377,6 +378,9 @@ void* setComLinks(void* invalidMemory){
 		  	contactInfo, grpc::InsecureChannelCredentials())));
 		}
 	}
+	// Create connection to master host on leading master port 
+	masterCom = new ServerChatClient(grpc::CreateChannel(
+	masterHostname+":"+masterPort, grpc::InsecureChannelCredentials()));
 	return 0;
 }
 
@@ -409,10 +413,6 @@ int main(int argc, char** argv) {
   defaultWorkerHostnames.push_back("lenss-comp1");
   defaultWorkerHostnames.push_back("lenss-comp3");
 
-	std::string host_x = "";
-	std::string host_y = "";
-	std::string reliableServer = "";
-	
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
   while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
 					host_y = optarg;
 					break;
 			case 'r':
-					reliableServer = optarg;
+					masterHostname = optarg;
 					break;
 			case 'l':
 					isLeader = true;
