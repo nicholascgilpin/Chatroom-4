@@ -127,7 +127,7 @@ public:
 	 : stub_(ServerChat::NewStub(channel)) {}
 
 	 // Checks if other endpoint is responsive
-	 void pulseCheck() {
+	 bool pulseCheck() {
 		 // Data we are sending to the server.
 		 Reply request;
 		 request.set_msg("a");
@@ -144,11 +144,12 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			 std::cout << "Server Still Alive: " << reply.msg() << std::endl;
+			//  std::cout << "Server Still Alive: " << reply.msg() << std::endl;
+			 return true;
 		 } else {
-			 std::cout << "Server with pid: " << reply.msg() << " has died!" << std::endl;
-			 std::cout << status.error_code() << ": " << status.error_message()
-								 << std::endl;
+			//  std::cout << status.error_code() << ": " << status.error_message()
+			// 					 << std::endl;
+			return false;
 		 }
 	 }
 };
@@ -310,6 +311,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 // Starts a new server process on the same worker port as the crashed process
 void startNewServer(std::string missingWorkerPort){
+	std::cout << "Fixing crash on port: " << missingWorkerPort << '\n';
 	std::string cmd = "./fbsd";
 	if (isMaster){
 		cmd = cmd + " -p " + port;
@@ -330,21 +332,35 @@ void startNewServer(std::string missingWorkerPort){
 }
 // Monitors and restarts other local prcesses if they crash
 void* heartBeatMonitor(void* invalidMemory){
-	//@TODO: Make more robbust by using cmd = arg0 of main cmd lind input
-	std::string missingWorkerPort = ""; //@TODO: Figure out which port is missing
-	// startNewServer("9998");
-	// Connect to local lead server if not the local lead
-	// if (workerPort == workerPortDefault){}
-	// else{
-	// 	ServerChatClient ServerChat(grpc::CreateChannel(
-	// 		"localhost:"+workerToConnect, grpc::InsecureChannelCredentials()));
-	// }
-	// send leader port and pid
-	// leader sends back other ports
-	// worker connects to other ports
-	// everyone takes pulses
-	// if worker down, restarts
-	// if leader down, reelect a leader, then start another worker
+	while(true){
+		for (size_t i = 0; i < localWorkersComs.size(); i++) {
+			std::string possiblyDeadPort = defaultWorkerPorts[i];
+			if(localWorkersComs[i].pulseCheck()){
+				// Connection alive
+			}
+			else{
+				// // Connection dead
+				// sleep(1); 
+				// // If not locked
+				// if(!localWorkersComs[i].pulseCheck()){
+				// 	// File lock
+				// 	startNewServer(possiblyDeadPort);
+				// 	sleep(1); 
+				// 	// File unlock
+				// }
+				// else{
+				// 	// Someone else restarted server
+				// }
+				// //  update connection info reguardless of who restarted  it
+				// std::string contactInfo = "localhost:"+possiblyDeadPort;
+				// localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
+				// contactInfo, grpc::InsecureChannelCredentials()));
+				// if (localWorkersComs[i].pulseCheck()) {
+				// 	std::cout << "Revive of port: " << possiblyDeadPort << '\n';
+				// }
+			}
+		}
+	}
 	return 0;
 }
 // Secondary service (for fault tolerence) to listen for connecting workers
