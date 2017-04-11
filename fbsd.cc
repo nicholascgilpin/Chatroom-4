@@ -47,7 +47,10 @@
 #include <unistd.h>
 #include <google/protobuf/util/time_util.h>
 #include <grpc++/grpc++.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include "fb.grpc.pb.h"
 
 using google::protobuf::Timestamp;
@@ -330,6 +333,19 @@ void startNewServer(std::string missingWorkerPort){
 	system(cmd.c_str());
 	sleep(5);
 }
+// Get an exclusive lock on filename or return -1 (already locked)
+int fileLock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't lock to restart process" << std::endl;
+	}
+
+	// -1 = File already locked; 0 = file unlocked
+	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
+
 // Monitors and restarts other local prcesses if they crash
 void* heartBeatMonitor(void* invalidMemory){
 	while(true){
@@ -341,15 +357,14 @@ void* heartBeatMonitor(void* invalidMemory){
 			else{
 				// // Connection dead
 				// sleep(1); 
-				// // If not locked
-				// if(!localWorkersComs[i].pulseCheck()){
-				// 	// File lock
+				// if(	fileLock("heartBeatMonitorLock") == 0){
+				// 	// If not file not locked
 				// 	startNewServer(possiblyDeadPort);
 				// 	sleep(1); 
 				// 	// File unlock
 				// }
 				// else{
-				// 	// Someone else restarted server
+				// 	//@TODO: What todo if  Someone else restarted server
 				// }
 				// //  update connection info reguardless of who restarted  it
 				// std::string contactInfo = "localhost:"+possiblyDeadPort;
