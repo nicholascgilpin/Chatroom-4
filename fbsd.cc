@@ -339,10 +339,24 @@ int fileLock(std::string filename){
 	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
 	if (fd < 0){
 		std::cout << "Couldn't lock to restart process" << std::endl;
+		return -1;
 	}
 
 	// -1 = File already locked; 0 = file unlocked
 	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
+
+// Opposite of fileLock
+int fileUnlock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't unlock file" << std::endl;
+	}
+
+	// -1 = Error; 0 = file unlocked
+	int rc = flock(fd, LOCK_UN | LOCK_NB);
 	return rc;
 }
 
