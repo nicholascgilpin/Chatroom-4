@@ -362,34 +362,45 @@ int fileUnlock(std::string filename){
 
 // Monitors and restarts other local prcesses if they crash
 void* heartBeatMonitor(void* invalidMemory){
-	while(true){
-		for (size_t i = 0; i < localWorkersComs.size(); i++) {
-			std::string possiblyDeadPort = defaultWorkerPorts[i];
-			if(localWorkersComs[i].pulseCheck()){
-				// Connection alive
-			}
-			else{
-				// // Connection dead
-				// sleep(1); 
-				// if(	fileLock("heartBeatMonitorLock") == 0){
-				// 	// If not file not locked
-				// 	startNewServer(possiblyDeadPort);
-				// 	sleep(1); 
-				// 	// File unlock
-				// }
-				// else{
-				// 	//@TODO: What todo if  Someone else restarted server
-				// }
-				// //  update connection info reguardless of who restarted  it
-				// std::string contactInfo = "localhost:"+possiblyDeadPort;
-				// localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
-				// contactInfo, grpc::InsecureChannelCredentials()));
-				// if (localWorkersComs[i].pulseCheck()) {
-				// 	std::cout << "Revive of port: " << possiblyDeadPort << '\n';
-				// }
-			}
-		}
-	}
+	sleep(2); // Wait for distributed system to start
+	// while(true){
+	// 	for (size_t i = 0; i < localWorkersComs.size(); i++) {
+	// 		std::string possiblyDeadPort = defaultWorkerPorts[i];
+	// 		std::string contactInfo = "localhost:"+possiblyDeadPort;
+	// 
+	// 		if(localWorkersComs[i].pulseCheck()){
+	// 			// Connection alive
+	// 		}
+	// 		else{
+	// 			// Connection dead
+	// 			sleep(1); 
+	// 			if(	fileLock("heartBeatMonitorLock") == 0){
+	// 				// Start new process if file was unlocked
+	// 				startNewServer(possiblyDeadPort);
+	// 				sleep(1); 
+	// 				
+	// 				if(fileUnlock("heartBeatMonitorLock") == -1){
+	// 					std::cerr << "Error unlocking heartBeatMonitorLock file" << '\n';
+	// 				}
+	// 				
+	// 				//  update connection info reguardless of who restarted  it
+	// 				localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
+	// 				contactInfo, grpc::InsecureChannelCredentials()));
+	// 				if (localWorkersComs[i].pulseCheck()) {
+	// 					std::cout << "Revive of port: " << possiblyDeadPort << " success!" << '\n';
+	// 				}
+	// 			}
+	// 			else{
+	// 				//  update connection info reguardless of who restarted  it
+	// 				localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
+	// 				contactInfo, grpc::InsecureChannelCredentials()));
+	// 				if (localWorkersComs[i].pulseCheck()) {
+	// 					std::cout << "Reconnection to: " << possiblyDeadPort << " success!" << '\n';
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 	return 0;
 }
 // Secondary service (for fault tolerence) to listen for connecting workers
@@ -413,7 +424,7 @@ void* RunServerCom(void* invalidMemory) {
 	return 0;
 }
 
-void* setComLinks(void* invalidMemory){
+void setComLinks(){
 	std::string contactInfo = "";
 	if (defaultWorkerPorts.size() == 0){
 		std::cout << "Error: Default ports uninitialized" << '\n';
@@ -430,7 +441,6 @@ void* setComLinks(void* invalidMemory){
 		  	contactInfo, grpc::InsecureChannelCredentials())));
 		}
 	}
-	return 0;
 }
 
 void RunServer(std::string port_no) {
@@ -491,11 +501,11 @@ int main(int argc, char** argv) {
     }
   }
 	
-	pthread_t thread_id, comLinks_tid, heartbeat_tid = -1;
+	pthread_t thread_id, heartbeat_tid = -1;
 	// int wport = std::stoi(workerPort);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
 	// Set up communication links between worker servers
-	pthread_create(&comLinks_tid, NULL, &setComLinks, (void*) NULL);
+	setComLinks();
 	// Monitor other local server heartbeats
 	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
 	// Start servering clients
