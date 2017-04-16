@@ -58,11 +58,18 @@ using hw2::Reply;
 using hw2::Credentials;
 using hw2::MessengerServer;
 
+std::string generateId(Message message){ 
+   int id = message.msg().length();
+   id = id + (rand() % (id + id/4 + 1));
+   id = id + rand();
+   return std::to_string(id);
+}
 //Helper function used to create a Message object given a username and message
 Message MakeMessage(const std::string& username, const std::string& msg) {
   Message m;
   m.set_username(username);
   m.set_msg(msg);
+  m.set_id(generateId(m));
   google::protobuf::Timestamp* timestamp = new google::protobuf::Timestamp();
   timestamp->set_seconds(time(NULL));
   timestamp->set_nanos(0);

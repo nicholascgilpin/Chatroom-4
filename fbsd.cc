@@ -41,6 +41,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <string>
 #include <stdlib.h>
@@ -119,6 +120,26 @@ class ServerChatImpl final : public ServerChat::Service {
 		out->set_msg("Worker port:" + workerPort + " PID:" + pid);
 		return Status::OK;
 	}
+
+  //Searches for the unique id of the message within the username.txt's file
+  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
+
+    unsigned int curLine = 0;
+    std::string line;
+    std::string toWrite = in->msg();
+    std::string delimiter = "::";
+    std::string id = toWrite.substr(0, toWrite.find(delimiter));
+    std::string nameandmessage = toWrite.substr(2, toWrite.find(delimiter));
+    std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
+    std::string filename = username+".txt";
+    std::ifstream file(filename);
+    while(std::getline(file, line)) {
+      curLine++;
+      if (line.find(id, 0) != std::string::npos) {
+          return Status::OK;
+      }
+    }
+  }
 };
 
 // Sending side of interserver chat Service
@@ -153,6 +174,26 @@ public:
 								 << std::endl;
 		 }
 	 }
+
+    void dataSync(std::string input){
+      Reply request;
+      Reply reply;
+      request.set_msg(input);
+      ClientContext context;
+
+      Status status = stub_->dataSync(&context, request, &reply);
+
+      if(status.ok()){
+        std::cout<<"Database synchronized.";
+      } else{
+        std::string delimiter = "::";
+        std::string nameandmessage = input.substr(2, input.find(delimiter));
+        std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
+        std::string filename = username+".txt";
+        std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
+        user_file << input;
+      }
+    }
 };
 
 // Logic and data behind the server-client behavior.
@@ -250,6 +291,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     //Read messages until the client disconnects
     while(stream->Read(&message)) {
       std::string username = message.username();
+      std::string unique_id = message.id();  
       int user_index = find_user(username);
       c = &client_db[user_index];
       //Write the current message to "username.txt"
@@ -257,7 +299,9 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
       google::protobuf::Timestamp temptime = message.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
-      std::string fileinput = time+" :: "+message.username()+":"+message.msg()+"\n";
+      std::string fileinput = unique_id +" :: "+time+" :: "+message.username()+":"+message.msg()+"\n";
+      //Call to synchronize the databases.
+      //dataSync(fileinput);
       //"Set Stream" is the default message from the client to initialize the stream
       if(message.msg() != "Set Stream")
         user_file << fileinput;

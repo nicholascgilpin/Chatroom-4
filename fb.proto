@@ -49,6 +49,7 @@ service MessengerServer {
 service ServerChat{
 	// Asks for a reply and restarts the server if no replay is recieved
 	rpc pulseCheck (Reply) returns (Reply) {}
+  rpc dataSync (Reply) returns (Reply) {}
 }
 message ListReply {
   repeated string all_rooms = 1;
@@ -71,10 +72,12 @@ message Reply {
 }
 
 message Message {
+  //unique ID
+  string id = 1;
   //Username who sent the message
-  string username = 1;
+  string username = 2;
   //Message from the user
-  string msg = 2;
+  string msg = 3;
   //Time the message was sent
-  google.protobuf.Timestamp timestamp = 3;
+  google.protobuf.Timestamp timestamp = 4;
 }
