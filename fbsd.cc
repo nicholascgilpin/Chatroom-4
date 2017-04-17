@@ -103,16 +103,26 @@ struct Client {
   }
 }; 
 
-// class vectorClock {
-// private:
-// 	/* data */
-// 	std::vector<int> clock;
-// public:
-// 	vectorClock (int unique_server_id, int vectorSize){
-// 		// @TODO: Create vector
-// 	}
-// 	virtual ~vectorClock ();
-// };
+class vectorClock {
+private:
+	/* data */
+	std::vector<google::protobuf::Timestamp> clock;
+public:
+	vectorClock (int unique_server_id, int vectorSize){
+		// @TODO: Create vector
+	}
+	operator<(google::protobuf::Timestamp left, google::protobuf::Timestamp right){
+		
+	}
+	operator=(google::protobuf::Timestamp left, google::protobuf::Timestamp right){
+		
+	}
+	void updateClock(google::protobuf::Timestamp){
+		
+	}
+	virtual ~vectorClock ();
+};
+
 
 //Vector that stores every client that has been created
 std::vector<Client> client_db;
