@@ -103,6 +103,17 @@ struct Client {
   }
 }; 
 
+// class vectorClock {
+// private:
+// 	/* data */
+// 	std::vector<int> clock;
+// public:
+// 	vectorClock (int unique_server_id, int vectorSize){
+// 		// @TODO: Create vector
+// 	}
+// 	virtual ~vectorClock ();
+// };
+
 //Vector that stores every client that has been created
 std::vector<Client> client_db;
 
