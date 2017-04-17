@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
 
   std::string hostname = "localhost";
   std::string username = "default";
-  std::string port = "6182";
+  std::string port = "2323";
   std::string messages = "10000";
   std::string usec = "n";
   int opt = 0;

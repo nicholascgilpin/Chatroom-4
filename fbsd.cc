@@ -79,10 +79,10 @@ class ServerChatClient;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
-std::string port = "6182"; // Port for clients to connect to
+std::string port = "2323"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
-std::string masterPort = "10001"; // Port that leading master monitors
+std::string masterPort = "10002"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
@@ -175,8 +175,12 @@ every X seconds.
     std::string line;
     std::string toWrite = in->msg();
     std::string delimiter = "::";
+    
     std::string id = toWrite.substr(0, toWrite.find(delimiter));
-    std::string nameandmessage = toWrite.substr(2, toWrite.find(delimiter));
+    toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
+    toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
+    
+    std::string nameandmessage = toWrite.substr(0, toWrite.find(delimiter));
     std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
     std::string filename = username+".txt";
     std::ifstream file(filename);
@@ -192,13 +196,13 @@ every X seconds.
     else{
       std::string filename = username+".txt";
       std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
-      user_file << toWrite;
+      user_file << in->msg();
       return Status::OK;
     }
     return Status::OK;
   }
 
-  //Searches for the unique id of the message within the username.txt's file
+  //TODO
   Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
  
     if(isMaster){
@@ -206,8 +210,12 @@ every X seconds.
       std::string line;
       std::string toWrite = in->msg();
       std::string delimiter = "::";
+
       std::string id = toWrite.substr(0, toWrite.find(delimiter));
-      std::string nameandmessage = toWrite.substr(2, toWrite.find(delimiter));
+      toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
+      toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
+
+      std::string nameandmessage = toWrite.substr(0, toWrite.find(delimiter));
       std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
       std::string filename = username+".txt";
       std::ifstream file(filename);
@@ -250,10 +258,10 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-        std::cout << "Why didn't Nick Implement this the first time through";
+        //std::cout << "Why didn't Nick Implement this the first time through";
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
@@ -276,7 +284,7 @@ public:
       }
     }
 
-    //
+    //TODO
     void dataSync(std::string input){
       Reply request;
       Reply reply;
@@ -467,13 +475,13 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     if(!isMaster){
       std::cout << "Redirecting client to Master: " << masterPort << std::endl;
       reply->set_hostname(masterHostname);
-      reply->set_portnumber("3055");
+      reply->set_portnumber("2323");
       reply->set_confirmation("toMaster");
     }
     else if (isMaster || isLeader){
-      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[0] << std::endl;
+      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[1] << std::endl;
       reply->set_hostname("localhost");
-      reply->set_portnumber("3055");
+      reply->set_portnumber("2323");
       reply->set_confirmation("toWorker");
     }
     else{
