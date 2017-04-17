@@ -48,7 +48,10 @@
 #include <unistd.h>
 #include <google/protobuf/util/time_util.h>
 #include <grpc++/grpc++.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include "fb.grpc.pb.h"
 
 using google::protobuf::Timestamp;
@@ -75,6 +78,7 @@ class ServerChatClient;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
+std::string port = "3055"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
 std::string masterPort = "10001"; // Port that leading master monitors
@@ -117,7 +121,7 @@ class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
 		std::string pid = std::to_string(getpid());
-		out->set_msg("Worker port:" + workerPort + " PID:" + pid);
+		out->set_msg(workerPort);
 		return Status::OK;
 	}
 
@@ -139,7 +143,8 @@ class ServerChatImpl final : public ServerChat::Service {
           return Status::OK;
       }
     }
-  }
+  	return Status::OK;
+	}
 };
 
 // Sending side of interserver chat Service
@@ -150,7 +155,8 @@ public:
  ServerChatClient(std::shared_ptr<Channel> channel)
 	 : stub_(ServerChat::NewStub(channel)) {}
 
-	 void pulseCheck() {
+	 // Checks if other endpoint is responsive
+	 bool pulseCheck() {
 		 // Data we are sending to the server.
 		 Reply request;
 		 request.set_msg("a");
@@ -167,11 +173,12 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			 std::cout << "Server Still Alive: " << reply.msg() << std::endl;
+			//  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			 return true;
 		 } else {
-			 std::cout << "Server with pid: " << reply.msg() << " has died!" << std::endl;
-			 std::cout << status.error_code() << ": " << status.error_message()
-								 << std::endl;
+			//  std::cout << status.error_code() << ": " << status.error_message()
+			// 					 << std::endl;
+			return false;
 		 }
 	 }
 
@@ -381,7 +388,107 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Starts a new server process on the same worker port as the crashed process
+void* startNewServer(void* missingPort){
+	int* mwp = (int*) missingPort;
+	std::string missingWorkerPort = std::to_string(*mwp);
+	std::cout << "Fixing crash on port: " << missingWorkerPort << '\n';
+	std::string cmd = "./fbsd";
+	if (isMaster){
+		cmd = cmd + " -p " + port;
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -y " + host_y;
+		cmd = cmd + " -m";
+		cmd = cmd + " -w " + missingWorkerPort;
+	}
+	else{
+		cmd = cmd + " -p " + port;
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -r " + masterHostname;
+		cmd = cmd + " -w " + missingWorkerPort;
+	}
+	// THIS IS A BLOCKING FUNCTION!!!!!
+	if(system(cmd.c_str()) == -1){
+		std::cerr << "Error: Could not start new process" << '\n';
+	}
+	return 0;
+}
+// Get an exclusive lock on filename or return -1 (already locked)
+int fileLock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't lock to restart process" << std::endl;
+		return -1;
+	}
 
+	// -1 = File already locked; 0 = file unlocked
+	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
+
+// Opposite of fileLock
+int fileUnlock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't unlock file" << std::endl;
+	}
+
+	// -1 = Error; 0 = file unlocked
+	int rc = flock(fd, LOCK_UN | LOCK_NB);
+	return rc;
+}
+
+// Monitors and restarts other local prcesses if they crash
+void* heartBeatMonitor(void* invalidMemory){
+	pthread_t startNewServer_tid = -1;
+	bool wasDisconnected = false;
+	while(true){
+		for (size_t i = 0; i < localWorkersComs.size(); i++) {
+			std::string possiblyDeadPort = defaultWorkerPorts[i];
+			int pdp = atoi(possiblyDeadPort.c_str());
+			std::string contactInfo = "localhost:"+ possiblyDeadPort;
+
+			
+			if(localWorkersComs[i].pulseCheck()){
+				// Connection alive
+				if(wasDisconnected){
+					std::cout << "Reconnected: " << workerPort << " --> " << possiblyDeadPort << '\n';
+					// @TODO: 
+					std::cout << "Start new election here" << '\n';
+				}
+				wasDisconnected = false;
+			}
+			else{
+	 			std::cout << "No Pulse " << workerPort << " --> " << possiblyDeadPort << std::endl;
+				wasDisconnected = true;
+				// Connection dead
+				if(	fileLock("heartBeatMonitorLock") == 0){
+					// Start new process if file was unlocked
+					pthread_create(&startNewServer_tid, NULL, &startNewServer, (void*) &pdp);
+					
+					if(fileUnlock("heartBeatMonitorLock") == -1){
+						std::cerr << "Error unlocking heartBeatMonitorLock file" << '\n';
+					}
+					std::cout << "Peer: " << workerPort << " reconnecting..." << '\n';
+					sleep(1); 
+					//  update connection info reguardless of who restarted  it
+					localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
+					contactInfo, grpc::InsecureChannelCredentials()));
+				}
+				else{
+					std::cout << "Peer: " << workerPort << " reconnecting..." << '\n';
+					sleep(1);
+					//  update connection info reguardless of who restarted  it
+					localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
+					contactInfo, grpc::InsecureChannelCredentials()));
+				}
+			}
+		}
+	}
+	return 0;
+}
 
 // Secondary service (for fault tolerence) to listen for connecting workers
 void* RunServerCom(void* invalidMemory) {
@@ -404,8 +511,7 @@ void* RunServerCom(void* invalidMemory) {
 	return 0;
 }
 
-void* setComLinks(void* invalidMemory){
-	// Create connections with local workers
+void setComLinks(){
 	std::string contactInfo = "";
 	if (defaultWorkerPorts.size() == 0){
 		std::cout << "Error: Default ports uninitialized" << '\n';
@@ -425,7 +531,6 @@ void* setComLinks(void* invalidMemory){
 	// Create connection to master host on leading master port 
 	masterCom = new ServerChatClient(grpc::CreateChannel(
 	masterHostname+":"+masterPort, grpc::InsecureChannelCredentials()));
-	return 0;
 }
 
 void RunServer(std::string port_no) {
@@ -449,7 +554,6 @@ void RunServer(std::string port_no) {
 
 int main(int argc, char** argv) {
   // Initialize default values
-  std::string port = "3055"; // Port for clients to connect to
 	defaultWorkerPorts.push_back("10001");
 	defaultWorkerPorts.push_back("10002");
 	defaultWorkerPorts.push_back("10003");
@@ -490,13 +594,17 @@ int main(int argc, char** argv) {
     }
   }
 	
-	//@TODO: This won't run until moved to another thread
-	//@TODO: Add startup ports to scripts
-	pthread_t thread_id, comLinks_tid = -1;
-	// int wport = std::stoi(workerPort);
+	pthread_t thread_id, heartbeat_tid = -1;
+	sleep(1);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
+	sleep(1);
 	// Set up communication links between worker servers
-	pthread_create(&comLinks_tid, NULL, &setComLinks, (void*) NULL);
+	setComLinks();
+	sleep(1);
+	// Monitor other local server heartbeats
+	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
+	sleep(1);
+	// Start servering clients
   RunServer(port);
 
   return 0;
