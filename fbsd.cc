@@ -41,6 +41,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <string>
 #include <stdlib.h>
@@ -68,6 +69,7 @@ using hw2::Request;
 using hw2::Reply;
 using hw2::MessengerServer;
 using hw2::ServerChat;
+using hw2::Credentials;
 using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
@@ -79,11 +81,14 @@ bool isLeader = false;
 std::string port = "3055"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
+std::string masterPort = "10001"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
+std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
+static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
-std::string reliableServer = "";
+std::string masterHostname = "lenss-comp4"; // Port for this process to contact
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -118,6 +123,27 @@ class ServerChatImpl final : public ServerChat::Service {
 		std::string pid = std::to_string(getpid());
 		out->set_msg(workerPort);
 		return Status::OK;
+	}
+
+  //Searches for the unique id of the message within the username.txt's file
+  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
+
+    unsigned int curLine = 0;
+    std::string line;
+    std::string toWrite = in->msg();
+    std::string delimiter = "::";
+    std::string id = toWrite.substr(0, toWrite.find(delimiter));
+    std::string nameandmessage = toWrite.substr(2, toWrite.find(delimiter));
+    std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
+    std::string filename = username+".txt";
+    std::ifstream file(filename);
+    while(std::getline(file, line)) {
+      curLine++;
+      if (line.find(id, 0) != std::string::npos) {
+          return Status::OK;
+      }
+    }
+  	return Status::OK;
 	}
 };
 
@@ -155,6 +181,26 @@ public:
 			return false;
 		 }
 	 }
+
+    void dataSync(std::string input){
+      Reply request;
+      Reply reply;
+      request.set_msg(input);
+      ClientContext context;
+
+      Status status = stub_->dataSync(&context, request, &reply);
+
+      if(status.ok()){
+        std::cout<<"Database synchronized.";
+      } else{
+        std::string delimiter = "::";
+        std::string nameandmessage = input.substr(2, input.find(delimiter));
+        std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
+        std::string filename = username+".txt";
+        std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
+        user_file << input;
+      }
+    }
 };
 
 // Logic and data behind the server-client behavior.
@@ -252,6 +298,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     //Read messages until the client disconnects
     while(stream->Read(&message)) {
       std::string username = message.username();
+      std::string unique_id = message.id();  
       int user_index = find_user(username);
       c = &client_db[user_index];
       //Write the current message to "username.txt"
@@ -259,7 +306,9 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
       google::protobuf::Timestamp temptime = message.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
-      std::string fileinput = time+" :: "+message.username()+":"+message.msg()+"\n";
+      std::string fileinput = unique_id +" :: "+time+" :: "+message.username()+":"+message.msg()+"\n";
+      //Call to synchronize the databases.
+      //dataSync(fileinput);
       //"Set Stream" is the default message from the client to initialize the stream
       if(message.msg() != "Set Stream")
         user_file << fileinput;
@@ -310,6 +359,33 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     return Status::OK;
   }
 
+  //Sends the client to the master server, then sends the client to the first available worker. 
+  //Needs to be re-evaluated to actually connect client to new server
+  //But works for now, not finished
+  Status SendCredentials(ServerContext* context, const Credentials* credentials, Credentials* reply) override {
+    std::cout<<"In SendCredentials Serverside"<< std::endl;
+    std::string hostname = credentials->hostname();
+    std::string portnumber = credentials->portnumber();
+
+    if(!isMaster){
+      std::cout << "Redirecting client to Master: " << masterPort << std::endl;
+      reply->set_hostname(masterHostname);
+      reply->set_portnumber("3055");
+      reply->set_confirmation("toMaster");
+    }
+    else if (isMaster || isLeader){
+      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[0] << std::endl;
+      reply->set_hostname("localhost");
+      reply->set_portnumber("3055");
+      reply->set_confirmation("toWorker");
+    }
+    else{
+      std::cout<<"There's been an error in the redirect: SendCredentials.'\n'";
+      return Status::CANCELLED;
+    }
+    return Status::OK;
+  }
+
 };
 
 // Starts a new server process on the same worker port as the crashed process
@@ -328,7 +404,7 @@ void* startNewServer(void* missingPort){
 	else{
 		cmd = cmd + " -p " + port;
 		cmd = cmd + " -x " + host_x;
-		cmd = cmd + " -r " + reliableServer;
+		cmd = cmd + " -r " + masterHostname;
 		cmd = cmd + " -w " + missingWorkerPort;
 	}
 	// THIS IS A BLOCKING FUNCTION!!!!!
@@ -413,6 +489,7 @@ void* heartBeatMonitor(void* invalidMemory){
 	}
 	return 0;
 }
+
 // Secondary service (for fault tolerence) to listen for connecting workers
 void* RunServerCom(void* invalidMemory) {
 	std::string server_address = "0.0.0.0:"+workerPort;
@@ -451,6 +528,9 @@ void setComLinks(){
 		  	contactInfo, grpc::InsecureChannelCredentials())));
 		}
 	}
+	// Create connection to master host on leading master port 
+	masterCom = new ServerChatClient(grpc::CreateChannel(
+	masterHostname+":"+masterPort, grpc::InsecureChannelCredentials()));
 }
 
 void RunServer(std::string port_no) {
@@ -477,7 +557,10 @@ int main(int argc, char** argv) {
 	defaultWorkerPorts.push_back("10001");
 	defaultWorkerPorts.push_back("10002");
 	defaultWorkerPorts.push_back("10003");
-	
+  defaultWorkerHostnames.push_back("lenss-comp4");
+  defaultWorkerHostnames.push_back("lenss-comp1");
+  defaultWorkerHostnames.push_back("lenss-comp3");
+
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
   while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
@@ -492,7 +575,7 @@ int main(int argc, char** argv) {
 					host_y = optarg;
 					break;
 			case 'r':
-					reliableServer = optarg;
+					masterHostname = optarg;
 					break;
 			case 'l':
 					isLeader = true;
