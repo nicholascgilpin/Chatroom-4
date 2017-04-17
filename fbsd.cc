@@ -111,11 +111,11 @@ public:
 	vectorClock (int unique_server_id, int vectorSize){
 		// @TODO: Create vector
 	}
-	operator<(google::protobuf::Timestamp left, google::protobuf::Timestamp right){
-		
+	bool operator<(const google::protobuf::Timestamp &left){
+		return false;
 	}
-	operator=(google::protobuf::Timestamp left, google::protobuf::Timestamp right){
-		
+	bool operator=(const google::protobuf::Timestamp &left){
+		return false;
 	}
 	void updateClock(google::protobuf::Timestamp){
 		
