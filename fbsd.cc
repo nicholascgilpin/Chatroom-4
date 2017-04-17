@@ -508,6 +508,17 @@ void* heartBeatMonitor(void* invalidMemory){
 			int pdp = atoi(possiblyDeadPort.c_str());
 			std::string contactInfo = "localhost:"+ possiblyDeadPort;
 
+			// Reconnect to master if it fails (retries on next loop iteration)
+			if(!masterCom->pulseCheck()){
+				std::cout << "Reconnecting to master..." << '\n';
+				sleep(1); // Wait for someone to restart master
+				masterCom =  new ServerChatClient(grpc::CreateChannel(
+				contactInfo, grpc::InsecureChannelCredentials()));
+				if (masterCom->pulseCheck()) {
+					std::cout << "Reonncted to master!" << '\n';
+				}
+			}
+
 			
 			if(localWorkersComs[i].pulseCheck()){
 				// Connection alive
