@@ -70,6 +70,7 @@ using hw2::Reply;
 using hw2::MessengerServer;
 using hw2::ServerChat;
 using hw2::Credentials;
+using hw2::DataSync;
 using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
@@ -78,7 +79,7 @@ class ServerChatClient;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
-std::string port = "3055"; // Port for clients to connect to
+std::string port = "6182"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
 std::string masterPort = "10001"; // Port that leading master monitors
@@ -88,7 +89,7 @@ std::vector<ServerChatClient> localWorkersComs;
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
-std::string masterHostname = "lenss-comp4"; // Port for this process to contact
+std::string masterHostname = "lenss-comp1"; // Port for this process to contact
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -100,7 +101,7 @@ struct Client {
   bool operator==(const Client& c1) const{
     return (username == c1.username);
   }
-};
+}; 
 
 //Vector that stores every client that has been created
 std::vector<Client> client_db;
@@ -117,14 +118,42 @@ int find_user(std::string username){
 }
 
 // Recieving side of interserver chat Service
+//MASTER SERVER PORTION
 class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
 		std::string pid = std::to_string(getpid());
 		out->set_msg(workerPort);
+    if(isMaster){
+      out->set_msg("You're on the master");
+    }
 		return Status::OK;
 	}
+//All workers send to master, master writes to its own database if the message isnt already there
+  //Thats what datasend does
+//When a worker requests a dataSync, worker sends IDs of all its message to the master
+  //The master takes the set difference of all its own database message IDs, and IDs it received from the worker request
+  //And then replies with the messages that it has, and receives the messages from the worker that it doesnt have
+  //Could have a dataSync message type that has a repeatable string in it for sending lists of IDs and the message response list
 
+
+/*
+A clientWorker is going to call the serverChatClient version of DataSend every time they are about the write a message.
+Datasend sends the information to the master for the master to write to its database.
+
+A clientWorker calls dataSync before a client chats for the first time. Maybe called in a loop in CHAT.
+NEEDS TO BE CALLED SOMEWHERE IN CHAT.
+Only goes to the worker that requested it.
+Put it at the start of the chatmessage. It would be good if it was also run
+every X seconds.
+*/
+
+  //
+/*
+  Status dataSend(ServerContext* context, const Reply* in, Reply* out) override{
+    //TODO
+  }
+*/
   //Searches for the unique id of the message within the username.txt's file
   Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
 
@@ -148,6 +177,7 @@ class ServerChatImpl final : public ServerChat::Service {
 };
 
 // Sending side of interserver chat Service
+//CLIENTWORKER SERVER PORTION
 class ServerChatClient {
 private:
 	std::unique_ptr<ServerChat::Stub> stub_;
@@ -173,15 +203,22 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			//  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-			//  std::cout << status.error_code() << ": " << status.error_message()
-			// 					 << std::endl;
+        std::cout << "Why didn't Nick Implement this the first time through";
+			  std::cout << status.error_code() << ": " << status.error_message()
+			 					 << std::endl;
 			return false;
 		 }
 	 }
 
+    //Forwards messages to the master when it receives a message
+    void dataSend(){
+      //TODO
+    }
+
+    //
     void dataSync(std::string input){
       Reply request;
       Reply reply;
@@ -604,6 +641,7 @@ int main(int argc, char** argv) {
 	// Monitor other local server heartbeats
 	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
 	sleep(1);
+  masterCom->pulseCheck();
 	// Start servering clients
   RunServer(port);
 

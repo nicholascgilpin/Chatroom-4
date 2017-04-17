@@ -81,3 +81,10 @@ message Message {
   //Time the message was sent
   google.protobuf.Timestamp timestamp = 4;
 }
+
+message DataSync {
+  //unique ID
+  repeated string id = 1;
+  //The message
+  repeated string message = 2;
+}
