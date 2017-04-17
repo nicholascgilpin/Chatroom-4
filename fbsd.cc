@@ -88,7 +88,7 @@ std::vector<ServerChatClient> localWorkersComs;
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
-std::string masterHostname = "lenss-comp4"; // Port for this process to contact
+std::string masterHostname = "lenss-comp1"; // Port for this process to contact
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -101,6 +101,17 @@ struct Client {
     return (username == c1.username);
   }
 };
+
+// class vectorClock {
+// private:
+// 	/* data */
+// 	std::vector<int> clock;
+// public:
+// 	vectorClock (int unique_server_id, int vectorSize){
+// 		// @TODO: Create vector
+// 	}
+// 	virtual ~vectorClock ();
+// };
 
 //Vector that stores every client that has been created
 std::vector<Client> client_db;

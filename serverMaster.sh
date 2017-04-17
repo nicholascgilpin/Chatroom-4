@@ -4,7 +4,7 @@ echo "This scipt expects to be run on the reliable server"
 echo "Starting 3 processes with the first as the leader"
 echo ""
 unreliableServer1="lenss-comp4.cse.tamu.edu"
-unreliableServer2="lenss-comp4.cse.tamu.edu" #@TODO: Add another domain name when availible
+unreliableServer2="lenss-comp3.cse.tamu.edu" #@TODO: Add another domain name when availible
 
 ./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -l -w 10001 &
 export pid1=$! # Get pid of last background process
