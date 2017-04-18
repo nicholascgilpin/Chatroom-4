@@ -104,14 +104,15 @@ struct Client {
   bool operator==(const Client& c1) const{
     return (username == c1.username);
   }
-}; 
+};
 
 class VectorClock {
 	private:
 		/* data */
-		std::vector<google::protobuf::Timestamp> _clk;
+		std::vector<int> _clk;
 		int _unique_server_id;
-		
+    int _logicalClock;
+
 		// @TODO: Write time stamp comparator https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/timestamp
 		// @TODO: Test all vector clock functions functions
 	public:
@@ -119,9 +120,10 @@ class VectorClock {
 		// unique_server_id is a unique id across the entire distributed system
 		VectorClock (int unique_server_id, int vectorSize){
 			_unique_server_id = unique_server_id;
-			_clk = std::vector<google::protobuf::Timestamp>(vectorSize);
+			_clk = std::vector<int>(vectorSize);
+      _logicalClock = 1;
 		}
-		
+
 		// A clock v is < w iff for all i v[i] < w[i]
 		bool operator<(const VectorClock &left){
 			int result = -1;
@@ -135,11 +137,11 @@ class VectorClock {
 						result = 1;
 					}
 				}
-			} 
+			}
 			else {
 				std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
 			}
-			
+
 			if (result == 1){
 				return true;
 			}
@@ -154,20 +156,20 @@ class VectorClock {
 			if (this->_clk.size() == left._clk.size()) {
 				for (size_t i = 0; i < this->_clk.size(); i++) {
 					if (left._clk[i] == this->_clk[i]){
-						result = 1; 
+						result = 1;
 					}
 					else{
 						// Either not equal or incomparable
 						result = 0;
 						break;
 					}
-					
+
 				}
-			} 
+			}
 			else {
 				std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
 			}
-			
+
 			if (result == 1){
 				return true;
 			}
@@ -177,20 +179,15 @@ class VectorClock {
 		}
 
 		// Updates this server's section of the vector Clock
-		std::vector<google::protobuf::Timestamp> updateClock(){
-			struct timeval tv;
-			gettimeofday(&tv, NULL);
-			
-			Timestamp stamp;
-			stamp.set_seconds(tv.tv_sec);
-			stamp.set_nanos(tv.tv_usec * 1000);
-			
-			this->_clk[this->_unique_server_id] = stamp;
+		std::vector<int> updateClock(){
+			_logicalClock = _logicalClock + 1;
+
+			this->_clk[this->_unique_server_id] = _logicalClock;
 			return this->_clk;
 		}
-				
+
 		// Combines two vectors by keeping the largest element for each position
-		std::vector<google::protobuf::Timestamp> mergeClocks(const VectorClock &other){
+		std::vector<int> mergeClocks(const VectorClock &other){
 			for (size_t i = 0; i < this->_clk.size(); i++) {
 				if (other._clk[i] > this->_clk[i]) {
 					this->_clk[i] = other._clk[i];
@@ -198,16 +195,26 @@ class VectorClock {
 			}
 			return this->_clk;
 		}
-		
+
+    // Generates string of clock
+    std::string to_string(){
+      std::string temp = "";
+      temp = "[";
+      for (size_t i = 0; i < this->_clk.size(); i++) {
+        temp = temp + "," + std::to_string(i);
+      }
+      temp = "]";
+      return temp;
+    }
+
 		void print(){
 			std::cout << "ID: " << this->_unique_server_id << " Size: " << this->_clk.size() << std::endl;
 			for (size_t i = 0; i < this->_clk.size(); i++) {
-				std::cout << '[' << i << "]=" <<
-				 google::protobuf::util::TimeUtil::ToString(this->_clk[i]) << '\n';
+				std::cout << '[' << i << "]=" << this->_clk[i] << '\n';
 			}
 		}
-		
-		// Previous tests saved in case their needed in the future 
+
+		// Previous tests saved in case their needed in the future
 		void unitTest(){
 			VectorClock* c0 = new VectorClock(0, 2); // Should be changed by command line params
 			VectorClock c1 = VectorClock(1, 2);
@@ -268,7 +275,7 @@ std::vector<std::string> collectIDs(){
           }
         }
       }
-    } 
+    }
     return fileIDs;
 }
 
@@ -312,18 +319,18 @@ every X seconds.
     std::string line;
     std::string toWrite = in->msg();
     std::string delimiter = "::";
-    
+
     std::string id = toWrite.substr(0, toWrite.find(delimiter));
     toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
     toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
-    
+
     std::string nameandmessage = toWrite.substr(0, toWrite.find(delimiter));
     std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
     std::string filename = username+".txt";
 
     if(find_user(username) < 0){
       Client c;
-      c.username = username; 
+      c.username = username;
       client_db.push_back(c);
     }
 
@@ -393,7 +400,7 @@ every X seconds.
             if (masterIDs[i] == messageIDs[k]) {
               found = ""; // add this
               break;
-            } 
+            }
             else if (masterIDs[i] != messageIDs[k]) {
               found = masterIDs[i];
             }
@@ -408,7 +415,7 @@ every X seconds.
     return Status::OK;
   }
 /*  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
- 
+
     if(isMaster){
       unsigned int curLine = 0;
       std::string line;
@@ -498,7 +505,7 @@ public:
       }
       else
         request.add_arguments("false");
-      
+
       ClientContext context;
 
       Status status = stub_->DataSendFollowers(&context, request, &reply);
@@ -540,7 +547,7 @@ public:
 
 // Logic and data behind the server-client behavior.
 class MessengerServiceImpl final : public MessengerServer::Service {
-  
+
   //Sends the list of total rooms and joined rooms to the client
   Status List(ServerContext* context, const Request* request, ListReply* list_reply) override {
     Client user = client_db[find_user(request->username())];
@@ -575,7 +582,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       user2->client_followers.push_back(user1);
       reply->set_msg("Join Successful");
     }
-    return Status::OK; 
+    return Status::OK;
   }
 
   //Sets user1 as no longer following user2
@@ -595,7 +602,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
         return Status::OK;
       }
       // find the user2 in user1 following and remove
-      user1->client_following.erase(find(user1->client_following.begin(), user1->client_following.end(), user2)); 
+      user1->client_following.erase(find(user1->client_following.begin(), user1->client_following.end(), user2));
       // find the user1 in user2 followers and remove
       user2->client_followers.erase(find(user2->client_followers.begin(), user2->client_followers.end(), user1));
       reply->set_msg("Leave Successful");
@@ -613,7 +620,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       client_db.push_back(c);
       reply->set_msg("Login Successful!");
     }
-    else{ 
+    else{
       Client *user = &client_db[user_index];
       if(user->connected)
         reply->set_msg("Invalid Username");
@@ -626,7 +633,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     return Status::OK;
   }
 
-  Status Chat(ServerContext* context, 
+  Status Chat(ServerContext* context,
 		ServerReaderWriter<Message, Message>* stream) override {
     Message message;
     Client *c;
@@ -634,7 +641,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     //Read messages until the client disconnects
     while(stream->Read(&message)) {
       std::string username = message.username();
-      std::string unique_id = message.id();  
+      std::string unique_id = message.id();
       int user_index = find_user(username);
       c = &client_db[user_index];
       //Write the current message to "username.txt"
@@ -671,12 +678,12 @@ class MessengerServiceImpl final : public MessengerServer::Service {
           }
           newest_twenty.push_back(line);
         }
-        Message new_msg; 
+        Message new_msg;
  	//Send the newest messages to the client to be displayed
 	for(uint i = 0; i<newest_twenty.size(); i++){
 	  new_msg.set_msg(newest_twenty[i]);
           stream->Write(new_msg);
-        }    
+        }
         continue;
       }
       //Send the message to each follower's stream
@@ -702,7 +709,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     return Status::OK;
   }
 
-  //Sends the client to the master server, then sends the client to the first available worker. 
+  //Sends the client to the master server, then sends the client to the first available worker.
   //Needs to be re-evaluated to actually connect client to new server
   //But works for now, not finished
   Status SendCredentials(ServerContext* context, const Credentials* credentials, Credentials* reply) override {
@@ -804,12 +811,12 @@ void* heartBeatMonitor(void* invalidMemory){
 				}
 			}
 
-			
+
 			if(localWorkersComs[i].pulseCheck()){
 				// Connection alive
 				if(wasDisconnected){
 					std::cout << "Reconnected: " << workerPort << " --> " << possiblyDeadPort << '\n';
-					// @TODO: 
+					// @TODO:
 					std::cout << "Start new election here" << '\n';
 				}
 				wasDisconnected = false;
@@ -821,12 +828,12 @@ void* heartBeatMonitor(void* invalidMemory){
 				if(	fileLock("heartBeatMonitorLock") == 0){
 					// Start new process if file was unlocked
 					pthread_create(&startNewServer_tid, NULL, &startNewServer, (void*) &pdp);
-					
+
 					if(fileUnlock("heartBeatMonitorLock") == -1){
 						std::cerr << "Error unlocking heartBeatMonitorLock file" << '\n';
 					}
 					std::cout << "Peer: " << workerPort << " reconnecting..." << '\n';
-					sleep(1); 
+					sleep(1);
 					//  update connection info reguardless of who restarted  it
 					localWorkersComs[i] = ServerChatClient(grpc::CreateChannel(
 					contactInfo, grpc::InsecureChannelCredentials()));
@@ -882,7 +889,7 @@ void setComLinks(){
 		  	contactInfo, grpc::InsecureChannelCredentials())));
 		}
 	}
-	// Create connection to master host on leading master port 
+	// Create connection to master host on leading master port
 	masterCom = new ServerChatClient(grpc::CreateChannel(
 	masterHostname+":"+masterPort, grpc::InsecureChannelCredentials()));
 }
@@ -916,6 +923,7 @@ int main(int argc, char** argv) {
   defaultWorkerHostnames.push_back("lenss-comp3");
 	// @TODO: Should be changed by command line params
 	serverClock = new VectorClock(0,9);
+
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
   while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
@@ -948,7 +956,7 @@ int main(int argc, char** argv) {
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
-	
+
 	pthread_t thread_id, heartbeat_tid = -1;
 	sleep(1);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
@@ -957,7 +965,7 @@ int main(int argc, char** argv) {
 	setComLinks();
 	sleep(1);
 	// Monitor other local server heartbeats
-	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
+	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);
 	sleep(1);
   masterCom->pulseCheck();
 	// Start servering clients
