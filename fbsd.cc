@@ -171,8 +171,19 @@ class vectorClock {
 				return false; // Incomparable or not less than
 			}
 		}
-		void updateClock(google::protobuf::Timestamp){
-			
+
+		// Updates this server's section of the vector Clock
+		void updateClock(google::protobuf::Timestamp stamp){
+			this->_clk[this->_unique_server_id] = stamp;
+		}
+		
+		// Combines two vectors by keeping the largest element for each position
+		void mergeClocks(const vectorClock &other){
+			for (size_t i = 0; i < this->_clk.size(); i++) {
+				if (other._clk[i] > this->_clk[i]) {
+					this->_clk[i] = other._clk[i];
+				}
+			}
 		}
 		virtual ~vectorClock ();
 };
