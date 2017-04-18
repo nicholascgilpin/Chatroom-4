@@ -105,28 +105,59 @@ struct Client {
 }; 
 
 class vectorClock {
-private:
-	/* data */
-	std::vector<google::protobuf::Timestamp> _clk;
-	int _unique_server_id;
-	
-	// @TODO: Write time stamp comparator https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/timestamp
-	
-public:
-	vectorClock (int unique_server_id, int vectorSize){
-		_unique_server_id = unique_server_id;
-		_clk = std::vector<google::protobuf::Timestamp>(vectorSize);
-	}
-	bool operator<(const google::protobuf::Timestamp &left){
-		return false;
-	}
-	bool operator=(const google::protobuf::Timestamp &left){
-		return false;
-	}
-	void updateClock(google::protobuf::Timestamp){
+	private:
+		/* data */
+		std::vector<google::protobuf::Timestamp> _clk;
+		int _unique_server_id;
 		
-	}
-	virtual ~vectorClock ();
+		// @TODO: Write time stamp comparator https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/timestamp
+		// @TODO: Test all vector clock functions functions
+	public:
+		// vector size is equal to the total count of servers
+		// unique_server_id is a unique id across the entire distributed system
+		vectorClock (int unique_server_id, int vectorSize){
+			_unique_server_id = unique_server_id;
+			_clk = std::vector<google::protobuf::Timestamp>(vectorSize);
+		}
+		
+		// A clock v is < w iff for all i v[i] < w[i]
+		bool operator<(const vectorClock &left){
+			int result = -1;
+			if (this->_clk.size() == left._clk.size()) {
+				for (size_t i = 0; i < this->_clk.size(); i++) {
+					if (left._clk[i] > this->_clk[i]) {
+						result = 0; // Either not less than or undefined
+						break;
+					}
+				}
+			} 
+			else {
+				std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
+			}
+			
+			if (result == 1){
+				return true;
+			}
+			else{
+				return false; // Undefined or not less than
+			}
+		}
+		// bool operator=(const vectorClock &left){
+		// 	bool result = true;
+		// 	if (this->_clk.size() == left._clk.size()) {
+		// 		for (size_t i = 0; i < this->_clk.size(); i++) {
+		// 			//
+		// 		}
+		// 	} 
+		// 	else {
+		// 		std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
+		// 	}
+		// 	return result;
+		// }
+		void updateClock(google::protobuf::Timestamp){
+			
+		}
+		virtual ~vectorClock ();
 };
 
 
