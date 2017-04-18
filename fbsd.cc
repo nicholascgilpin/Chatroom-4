@@ -75,7 +75,7 @@ using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
 class ServerChatClient;
-
+class vectorClock;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
@@ -90,6 +90,7 @@ static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
+static vectorClock* serverClock; // The vector clock for this server; init in main
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -106,10 +107,15 @@ struct Client {
 class vectorClock {
 private:
 	/* data */
-	std::vector<google::protobuf::Timestamp> clock;
+	std::vector<google::protobuf::Timestamp> _clk;
+	int _unique_server_id;
+	
+	// @TODO: Write time stamp comparator https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/timestamp
+	
 public:
 	vectorClock (int unique_server_id, int vectorSize){
-		// @TODO: Create vector
+		_unique_server_id = unique_server_id;
+		_clk = std::vector<google::protobuf::Timestamp>(vectorSize);
 	}
 	bool operator<(const google::protobuf::Timestamp &left){
 		return false;
@@ -629,7 +635,8 @@ int main(int argc, char** argv) {
   defaultWorkerHostnames.push_back("lenss-comp4");
   defaultWorkerHostnames.push_back("lenss-comp1");
   defaultWorkerHostnames.push_back("lenss-comp3");
-
+	// @TODO: Should be changed by command line params
+	serverClock = new vectorClock(0, 1); // Should be changed by command line params
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
   while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
