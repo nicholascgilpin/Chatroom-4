@@ -129,6 +129,9 @@ class vectorClock {
 						result = 0; // Either not less than or undefined
 						break;
 					}
+					else{
+						result = 1;
+					}
 				}
 			} 
 			else {
@@ -139,21 +142,35 @@ class vectorClock {
 				return true;
 			}
 			else{
-				return false; // Undefined or not less than
+				return false; // Incomparable or not less than
 			}
 		}
-		// bool operator=(const vectorClock &left){
-		// 	bool result = true;
-		// 	if (this->_clk.size() == left._clk.size()) {
-		// 		for (size_t i = 0; i < this->_clk.size(); i++) {
-		// 			//
-		// 		}
-		// 	} 
-		// 	else {
-		// 		std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
-		// 	}
-		// 	return result;
-		// }
+		bool operator=(const vectorClock &left){
+			int result = -1;
+			if (this->_clk.size() == left._clk.size()) {
+				for (size_t i = 0; i < this->_clk.size(); i++) {
+					if (left._clk[i] == this->_clk[i]){
+						result = 1; 
+					}
+					else{
+						// Either not equal or incomparable
+						result = 0;
+						break;
+					}
+					
+				}
+			} 
+			else {
+				std::cerr << "Error: Vector clocks of diferent sizes." << '\n';
+			}
+			
+			if (result == 1){
+				return true;
+			}
+			else{
+				return false; // Incomparable or not less than
+			}
+		}
 		void updateClock(google::protobuf::Timestamp){
 			
 		}
