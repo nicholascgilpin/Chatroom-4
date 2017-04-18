@@ -49,6 +49,7 @@ service MessengerServer {
 service ServerChat{
 	// Asks for a reply and restarts the server if no replay is recieved
 	rpc pulseCheck (Reply) returns (Reply) {}
+  rpc DataSend (Reply) returns (Reply) {}
   rpc dataSync (Reply) returns (Reply) {}
 }
 message ListReply {
