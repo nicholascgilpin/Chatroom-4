@@ -50,7 +50,8 @@ service ServerChat{
 	// Asks for a reply and restarts the server if no replay is recieved
 	rpc pulseCheck (Reply) returns (Reply) {}
   rpc DataSend (Reply) returns (Reply) {}
-  rpc dataSync (Reply) returns (Reply) {}
+  rpc DataSendFollowers(Request) returns (Reply){}
+  rpc dataSync (DataSync) returns (DataSync) {}
 }
 message ListReply {
   repeated string all_rooms = 1;
@@ -85,7 +86,7 @@ message Message {
 
 message DataSync {
   //unique ID
-  repeated string id = 1;
+  repeated string ids = 1;
   //The message
-  repeated string message = 2;
+  repeated string messages = 2;
 }

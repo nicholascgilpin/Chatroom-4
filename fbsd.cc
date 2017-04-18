@@ -86,6 +86,8 @@ std::string masterPort = "10002"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
+std::vector<std::string> messageIDs; //messageIDs for workers
+std::vector<std::string> masterMessageIDs; //MessageIDs for master
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
@@ -138,6 +140,35 @@ int find_user(std::string username){
   return -1;
 }
 
+bool doesFileExist(std::string fileName){
+    std::ifstream infile(fileName);
+    return infile.good();
+}
+
+std::vector<std::string> collectIDs(){
+    std::string line;
+    std::vector<std::string> fileIDs;
+    std::string delimiter = "::";
+    unsigned int curLine = 0;
+
+    for(int i = 0; i < client_db.size(); i++){
+      std::string filename = client_db[i].username+".txt";
+      if(doesFileExist(filename)){
+        std::ifstream file(filename);
+        while(std::getline(file, line)) {
+          curLine++;
+          std::string id = line.substr(0, line.find(delimiter));
+          if (line.find(id, 0) != std::string::npos) {
+            fileIDs.push_back(id);
+          }
+        }
+      }
+    } 
+    return fileIDs;
+}
+
+
+
 // Recieving side of interserver chat Service
 //MASTER SERVER PORTION
 class ServerChatImpl final : public ServerChat::Service {
@@ -169,6 +200,7 @@ Put it at the start of the chatmessage. It would be good if it was also run
 every X seconds.
 */
 
+  //Add user data to master's database
   Status DataSend(ServerContext* context, const Reply* in, Reply* out) override{
     unsigned int curLine = 0;
     bool flag = false;
@@ -183,6 +215,13 @@ every X seconds.
     std::string nameandmessage = toWrite.substr(0, toWrite.find(delimiter));
     std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
     std::string filename = username+".txt";
+
+    if(find_user(username) < 0){
+      Client c;
+      c.username = username; 
+      client_db.push_back(c);
+    }
+
     std::ifstream file(filename);
     while(std::getline(file, line)) {
       curLine++;
@@ -202,8 +241,68 @@ every X seconds.
     return Status::OK;
   }
 
-  //TODO
-  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
+  //Add the following data to the master's database
+  Status DataSendFollowers(ServerContext* context, const Request* in, Reply* out) override{
+    unsigned int curLine = 0;
+    bool flag = false;
+    std::string line;
+    std::string followerfile = in->username();
+    std::string toWrite = in->arguments(0);
+    std::string delimiter = "::";
+    if(in->arguments(1).compare("true") == 0){
+      followerfile = followerfile + "following.txt";
+    }
+    else
+      followerfile = followerfile + ".txt";
+
+    std::string id = toWrite.substr(0, toWrite.find(delimiter));
+
+    std::ifstream file(followerfile);
+    while(std::getline(file, line)) {
+      curLine++;
+      if (line.find(id, 0) != std::string::npos) {
+          flag = true;
+      }
+    }
+    if(flag == true){
+      return Status::OK;
+    }
+    else{
+      std::ofstream user_file(followerfile,std::ios::app|std::ios::out|std::ios::in);
+      user_file << in->arguments(0);
+      return Status::OK;
+    }
+    return Status::OK;
+  }
+
+  Status dataSync(ServerContext *context, const DataSync* in, DataSync* out) override{
+     if(isMaster){
+        std::vector<std::string> masterIDs = collectIDs();
+        std::vector<std::string> workerIDsToSend;
+        std::string found;
+        for(int i=0; i< (in->ids().size()); i++){
+          messageIDs.push_back(in->ids(i));
+        }
+        for (int i = 0; i < masterIDs.size(); i++) {
+          for (int k = 0; k < messageIDs.size(); k++) {
+            if (masterIDs[i] == messageIDs[k]) {
+              found = ""; // add this
+              break;
+            } 
+            else if (masterIDs[i] != messageIDs[k]) {
+              found = masterIDs[i];
+            }
+          }
+          if (found != "") { // to trigger this and not save garbage
+            workerIDsToSend.push_back(found);
+          }
+        }
+     }
+     else
+      return Status::OK;
+    return Status::OK;
+  }
+/*  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
  
     if(isMaster){
       unsigned int curLine = 0;
@@ -227,7 +326,7 @@ every X seconds.
       }
     }
   	return Status::OK;
-	}
+	}*/
 
 };
 
@@ -284,24 +383,52 @@ public:
       }
     }
 
-    //TODO
-    void dataSync(std::string input){
-      Reply request;
+    void DataSendFollowers(std::string followerfile, std::string input, bool isFollowerFile){
+      Request request;
       Reply reply;
-      request.set_msg(input);
+      request.set_username(followerfile);
+      request.add_arguments(input);
+      if(isFollowerFile){
+        request.add_arguments("true");
+      }
+      else
+        request.add_arguments("false");
+      
       ClientContext context;
 
-      Status status = stub_->dataSync(&context, request, &reply);
-
+      Status status = stub_->DataSendFollowers(&context, request, &reply);
       if(status.ok()){
         std::cout<<"Database synchronized.";
       } else{
+        std::cout << status.error_code() << ": " << status.error_message()
+                 << std::endl;
+      }
+    }
+
+    //TODO
+    void dataSync(std::vector<std::string> allMessageIDs){
+      DataSync clientIDs;
+      DataSync reply;
+      ClientContext context;
+
+      for(int i=0; i<allMessageIDs.size(); i++){
+        clientIDs.add_ids(allMessageIDs[i]);
+      }
+
+      Status status = stub_->dataSync(&context, clientIDs, &reply);
+
+      if(status.ok()){
+        //GET INFO FROM REPLY
         std::string delimiter = "::";
-        std::string nameandmessage = input.substr(2, input.find(delimiter));
+        /*std::string nameandmessage = input.substr(2, input.find(delimiter));
         std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
         std::string filename = username+".txt";
         std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
-        user_file << input;
+        user_file << input;*/
+        std::cout<<"Database synchronized.";
+      } else{
+        std::cout << status.error_code() << ": " << status.error_message()
+                 << std::endl;
       }
     }
 };
@@ -398,6 +525,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 		ServerReaderWriter<Message, Message>* stream) override {
     Message message;
     Client *c;
+
     //Read messages until the client disconnects
     while(stream->Read(&message)) {
       std::string username = message.username();
@@ -410,8 +538,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       google::protobuf::Timestamp temptime = message.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
       std::string fileinput = unique_id +" :: "+time+" :: "+message.username()+":"+message.msg()+"\n";
-      //Call to synchronize the databases.
-
+ //     messageIDs.push_back(unique_id);
       //"Set Stream" is the default message from the client to initialize the stream
       if(message.msg() != "Set Stream"){
         user_file << fileinput;
@@ -421,6 +548,10 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       else{
         if(c->stream == 0)
       	  c->stream = stream;
+
+        //CALL FOR DATASYNC(messageIDs)
+        masterCom->dataSync(collectIDs());
+
         std::string line;
         std::vector<std::string> newest_twenty;
         std::ifstream in(username+"following.txt");
@@ -454,9 +585,11 @@ class MessengerServiceImpl final : public MessengerServer::Service {
         std::string temp_file = temp_username + "following.txt";
 	std::ofstream following_file(temp_file,std::ios::app|std::ios::out|std::ios::in);
 	following_file << fileinput;
+  masterCom->DataSendFollowers(temp_username, fileinput, true);
         temp_client->following_file_size++;
 	std::ofstream user_file(temp_username + ".txt",std::ios::app|std::ios::out|std::ios::in);
         user_file << fileinput;
+        masterCom->DataSendFollowers(temp_username, fileinput, false);
       }
     }
     //If the client disconnected from Chat Mode, set connected to false
