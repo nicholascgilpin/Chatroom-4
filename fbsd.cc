@@ -75,7 +75,7 @@ using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
 class ServerChatClient;
-class vectorClock;
+class VectorClock;
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
 bool isLeader = false;
@@ -90,7 +90,7 @@ static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
-static vectorClock* serverClock; // The vector clock for this server; init in main
+static VectorClock* serverClock; // The vector clock for this server; init in main
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -104,7 +104,7 @@ struct Client {
   }
 }; 
 
-class vectorClock {
+class VectorClock {
 	private:
 		/* data */
 		std::vector<google::protobuf::Timestamp> _clk;
@@ -115,13 +115,13 @@ class vectorClock {
 	public:
 		// vector size is equal to the total count of servers
 		// unique_server_id is a unique id across the entire distributed system
-		vectorClock (int unique_server_id, int vectorSize){
+		VectorClock (int unique_server_id, int vectorSize){
 			_unique_server_id = unique_server_id;
 			_clk = std::vector<google::protobuf::Timestamp>(vectorSize);
 		}
 		
 		// A clock v is < w iff for all i v[i] < w[i]
-		bool operator<(const vectorClock &left){
+		bool operator<(const VectorClock &left){
 			int result = -1;
 			if (this->_clk.size() == left._clk.size()) {
 				for (size_t i = 0; i < this->_clk.size(); i++) {
@@ -145,7 +145,9 @@ class vectorClock {
 				return false; // Incomparable or not less than
 			}
 		}
-		bool operator=(const vectorClock &left){
+
+		// A clock v is == w iff for all i v[i] == w[i]
+		bool operator==(const VectorClock &left){
 			int result = -1;
 			if (this->_clk.size() == left._clk.size()) {
 				for (size_t i = 0; i < this->_clk.size(); i++) {
@@ -173,19 +175,57 @@ class vectorClock {
 		}
 
 		// Updates this server's section of the vector Clock
-		void updateClock(google::protobuf::Timestamp stamp){
+		std::vector<google::protobuf::Timestamp> updateClock(){
+			struct timeval tv;
+			gettimeofday(&tv, NULL);
+			
+			Timestamp stamp;
+			stamp.set_seconds(tv.tv_sec);
+			stamp.set_nanos(tv.tv_usec * 1000);
+			
 			this->_clk[this->_unique_server_id] = stamp;
+			return this->_clk;
 		}
-		
+				
 		// Combines two vectors by keeping the largest element for each position
-		void mergeClocks(const vectorClock &other){
+		std::vector<google::protobuf::Timestamp> mergeClocks(const VectorClock &other){
 			for (size_t i = 0; i < this->_clk.size(); i++) {
 				if (other._clk[i] > this->_clk[i]) {
 					this->_clk[i] = other._clk[i];
 				}
 			}
+			return this->_clk;
 		}
-		virtual ~vectorClock ();
+		
+		void print(){
+			std::cout << "ID: " << this->_unique_server_id << " Size: " << this->_clk.size() << std::endl;
+			for (size_t i = 0; i < this->_clk.size(); i++) {
+				std::cout << '[' << i << "]=" <<
+				 google::protobuf::util::TimeUtil::ToString(this->_clk[i]) << '\n';
+			}
+		}
+		
+		// Previous tests saved in case their needed in the future 
+		void unitTest(){
+			VectorClock* c0 = new VectorClock(0, 2); // Should be changed by command line params
+			VectorClock c1 = VectorClock(1, 2);
+			std::cout << "Should be true =: " << (c1==*c0) << '\n';
+			std::cout << "c0:" << '\n';
+			c0->print();
+			std::cout << "c1:" << '\n';
+			c1.print();
+			c0->updateClock();
+			c1.updateClock();
+			std::cout << "\nShould be false <: " << (c1<*c0) << '\n';
+			std::cout << "c0:" << '\n';
+			c0->print();
+			std::cout << "c1:" << '\n';
+			c1.print();
+			std::cout << "\nMerged server clock:" << '\n';
+			c0->mergeClocks(c1);
+			c0->print();
+
+		}
 };
 
 
@@ -742,7 +782,7 @@ int main(int argc, char** argv) {
   defaultWorkerHostnames.push_back("lenss-comp1");
   defaultWorkerHostnames.push_back("lenss-comp3");
 	// @TODO: Should be changed by command line params
-	serverClock = new vectorClock(0, 1); // Should be changed by command line params
+	serverClock = new VectorClock(0,9);
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
   while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
