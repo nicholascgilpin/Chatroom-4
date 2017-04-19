@@ -5,11 +5,11 @@ unreliableServer1 = "lenss-comp4.cse.tamu.edu" #@TODO: Add another domain name w
 reliableServer = "lenss-comp1.cse.tamu.edu"
 #
 # Start 3 worker processes
-./fbsd -x $unreliableServer1 -r $reliableServer -l -w 10001 &
+./fbsd -x $unreliableServer1 -r $reliableServer -l -w 10001 -i 6 &
 export pid1=$! # Get pid of last background process
-./fbsd -x $unreliableServer1 -r $reliableServer -w 10002 -c 10001 &
+./fbsd -x $unreliableServer1 -r $reliableServer -w 10002 -i 7 &
 export pid2=$! # Get pid of last background process
-./fbsd -x $unreliableServer1 -r $reliableServer -w 10003 -c 10001 &
+./fbsd -x $unreliableServer1 -r $reliableServer -w 10003 -i 8 &
 export pid3=$! # Get pid of last background process
 echo "-------------------------------------------------------------------------"
 echo "Press Enter to kill all processes started by this script..."

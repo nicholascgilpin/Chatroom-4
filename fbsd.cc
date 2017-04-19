@@ -95,7 +95,7 @@ std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
 //Vector that stores every client that has been created
 std::vector<Client> client_db;
-
+int server_id = 0;
 // Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -862,7 +862,7 @@ int main(int argc, char** argv) {
 
 	// Parses options that start with '-' and adding ':' makes it mandontory
   int opt = 0;
-  while ((opt = getopt(argc, argv, "c:w:p:x:y:r:ml")) != -1){
+  while ((opt = getopt(argc, argv, "c:w:p:x:y:r:mli:")) != -1){
     switch(opt) {
       case 'p':
           port = optarg;
@@ -888,6 +888,9 @@ int main(int argc, char** argv) {
 			case 'c':
 					workerToConnect = optarg;
 					break;
+			case 'i':
+					server_id = atoi(optarg);
+					break;
 	      default:
 	  std::cerr << "Invalid Command Line Argument\n";
     }
@@ -903,7 +906,6 @@ int main(int argc, char** argv) {
 	// Monitor other local server heartbeats
 	pthread_create(&heartbeat_tid, NULL, &heartBeatMonitor, (void*) NULL);	
 	sleep(1);
-  masterCom->pulseCheck();
 	// Start servering clients
   RunServer(port);
 
