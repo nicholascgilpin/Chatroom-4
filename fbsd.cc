@@ -75,7 +75,6 @@ using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
 class ServerChatClient;
-struct Client;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
@@ -87,16 +86,11 @@ std::string masterPort = "10002"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
-std::vector<std::string> messageIDs; //messageIDs for workers
-std::vector<std::string> masterMessageIDs; //MessageIDs for master
+//std::vector<std::string> messageIDs; //messageIDs for the master server to have
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
-//Vector that stores every client that has been created
-std::vector<Client> client_db;
-
-// Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -131,12 +125,45 @@ public:
 };
 
 
-// Utility Functions /////////////////////////////////////////////////////////
+//Vector that stores every client that has been created
+std::vector<Client> client_db;
+std::vector<std::string> masterList;
+
+//Very rudimentary implementation of datasync
+Request convertClient(Client client){
+  Request request;
+  std::string toStore;
+
+  toStore = client.username + " ~~ " + "true " + std::to_string(client.following_file_size) + " ~~ " + "0";
+  request.set_username(toStore);
+
+  for(int i =0; i< client.client_followers.size(); i++){
+    request.add_arguments(client.client_followers[i]->username);
+  }
+  request.add_arguments("~~");
+
+  for(int i =0; i< client.client_following.size(); i++){
+    request.add_arguments(client.client_following[i]->username);
+  }
+
+  return request;
+}
+
 //Helper function used to find a Client object given its username
 int find_user(std::string username){
   int index = 0;
   for(Client c : client_db){
     if(c.username == username)
+      return index;
+    index++;
+  }
+  return -1;
+}
+
+int find_user_in_master(std::string username){
+  int index = 0;
+  for(std::string c : masterList){
+    if(c == username)
       return index;
     index++;
   }
@@ -154,7 +181,7 @@ std::vector<std::string> collectIDs(){
     std::string delimiter = "::";
     unsigned int curLine = 0;
 
-    for(uint i = 0; i < client_db.size(); i++){
+    for(int i = 0; i < client_db.size(); i++){
       std::string filename = client_db[i].username+".txt";
       if(doesFileExist(filename)){
         std::ifstream file(filename);
@@ -170,34 +197,26 @@ std::vector<std::string> collectIDs(){
     return fileIDs;
 }
 
-// Get an exclusive lock on filename or return -1 (already locked)
-int fileLock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't lock to restart process" << std::endl;
-		return -1;
-	}
+std::string findMessageFromID(std::string id){
+  std::string line = "";
+  std::string delimiter = "::";
+  unsigned int curLine = 0;
 
-	// -1 = File already locked; 0 = file unlocked
-	int rc = flock(fd, LOCK_EX | LOCK_NB);
-	return rc;
+  for(int i = 0; i < client_db.size(); i++){
+    std::string filename = client_db[i].username+".txt";
+    if(doesFileExist(filename)){
+      std::ifstream file(filename);
+      while(std::getline(file, line)) {
+        curLine++;
+        if(id.compare(line.substr(0, line.find(delimiter))) == 0){
+          return line;
+        }
+      }
+    }
+  } 
+  return line;
 }
 
-// Opposite of fileLock
-int fileUnlock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't unlock file" << std::endl;
-	}
-
-	// -1 = Error; 0 = file unlocked
-	int rc = flock(fd, LOCK_UN | LOCK_NB);
-	return rc;
-}
-
-// gRPC classes ////////////////////////////////////////////////////////////////
 // Recieving side of interserver chat Service
 //MASTER SERVER PORTION
 class ServerChatImpl final : public ServerChat::Service {
@@ -228,17 +247,7 @@ Only goes to the worker that requested it.
 Put it at the start of the chatmessage. It would be good if it was also run
 every X seconds.
 */
-	// Record sync info to master database
-	Status joinSync(ServerContext* context, const Request* in, Reply* out)override{
-		
-		return Status::OK;
-	}
-	// Record sync info to master database
-	Status leaveSync(ServerContext* context, const Request* in, Reply* out)override{
-		
-		return Status::OK;
-	}
-	
+
   //Add user data to master's database
   Status DataSend(ServerContext* context, const Reply* in, Reply* out) override{
     unsigned int curLine = 0;
@@ -315,57 +324,103 @@ every X seconds.
   }
 
   Status dataSync(ServerContext *context, const DataSync* in, DataSync* out) override{
-     if(isMaster){
+    if(isMaster){
         std::vector<std::string> masterIDs = collectIDs();
-        std::vector<std::string> workerIDsToSend;
+        std::vector<std::string> workerIDs;
+        std::vector<std::string> diffList;
         std::string found;
-        for (uint i=0; i < in->ids().size(); i++){
-          messageIDs.push_back(in->ids(i));
+
+        for(int i=0; i< (in->ids().size()); i++){
+          workerIDs.push_back(in->ids(i));
         }
-        for (uint i = 0; i < masterIDs.size(); i++) {
-          for (uint k = 0; k < messageIDs.size(); k++) {
-            if (masterIDs[i] == messageIDs[k]) {
+
+        for (int i = 0; i < masterIDs.size(); i++) {
+          for (int k = 0; k < workerIDs.size(); k++) {
+            if (masterIDs[i] == workerIDs[k]) {
               found = ""; // add this
               break;
             } 
-            else if (masterIDs[i] != messageIDs[k]) {
+            else if (masterIDs[i] != workerIDs[k]) {
               found = masterIDs[i];
             }
           }
-          if (found != "") { // to trigger this and not save garbage
-            workerIDsToSend.push_back(found);
+          if (found.compare("") == 1) { // to trigger this and not save garbage
+            diffList.push_back(found);
           }
         }
-     }
+
+        if(diffList.size() != 0){
+          for(int i = 0; i < diffList.size(); i++){
+            out->add_messages(findMessageFromID(diffList[i]));
+          }
+        }
+        return Status::OK;
+      }
      else
-      return Status::OK;
+      return Status::CANCELLED;
     return Status::OK;
   }
-/*  Status dataSync(ServerContext *context, const Reply* in, Reply* out) override{
- 
+
+  Status UpdateDatabase(ServerContext* context, const Request* in, Reply* out) override{
     if(isMaster){
-      unsigned int curLine = 0;
-      std::string line;
-      std::string toWrite = in->msg();
-      std::string delimiter = "::";
+      if(find_user_in_master(in->username()) < 0){
+        masterList.push_back(in->username());
+        int index;
 
-      std::string id = toWrite.substr(0, toWrite.find(delimiter));
-      toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
-      toWrite.erase(0, toWrite.find(delimiter) + delimiter.length());
+        std:: string client_database = "client_database.txt";
+        std::ofstream file(client_database,std::ios::app|std::ios::out|std::ios::in);
 
-      std::string nameandmessage = toWrite.substr(0, toWrite.find(delimiter));
-      std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
-      std::string filename = username+".txt";
-      std::ifstream file(filename);
-      while(std::getline(file, line)) {
-        curLine++;
-        if (line.find(id, 0) != std::string::npos) {
-            return Status::OK;
+        //Really shitty hackey way of doing this but oh well:
+        std::string input = in->username() + " followers:"; 
+        for(int i=0; i< (in->arguments().size()); i++){
+          if(in->arguments(i).compare("~~") == 0){
+            input = input + " " + in->arguments(i);
+          }
+          else{
+            index = i;
+            input = input + " following:";
+            break;
+          }
         }
+        for(int i=index; i < (in->arguments().size()); i++){
+           input = input + " " + in->arguments(i);
+        }
+        file << input;
+        return Status::OK;
+      }
+      else{
+        int index;
+        
+        std::string input = in->username() + " followers:"; 
+        for(int i=0; i< (in->arguments().size()); i++){
+          if(in->arguments(i).compare("~~") == 0){
+            input = input + " " + in->arguments(i);
+          }
+          else{
+            index = i;
+            input = input + " following:";
+            break;
+          }
+        }
+        for(int i=index; i < (in->arguments().size()); i++){
+           input = input + " " + in->arguments(i);
+        }
+        std::string line;
+        std::ifstream filein("client_database.txt");
+        std::ofstream fileout("tempfile.txt", std::ios::app|std::ios::out|std::ios::in);
+        while(std::getline(filein, line)) {
+          if (line.find(in->username(), 0)) 
+            line = input;
+          else
+            fileout << line;
+        }
+        rename("client_database.txt", "delete.txt");
+        rename("tempfile.txt", "client_database.txt");
+        remove("delete.txt");
       }
     }
-  	return Status::OK;
-	}*/
+    return Status::OK;
+  }
 
 };
 
@@ -399,60 +454,13 @@ public:
 			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
+        //std::cout << "Why didn't Nick Implement this the first time through";
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
 		 }
 	 }
-	 
-	 // Forwards request data to master
-	 void joinSync(Request r){
-		 // Data we are sending to the server.
-		 Request request = r;
 
-		 // Container for the data we expect from the server.
-		 Reply reply;
-
-		 // Context for the client. It could be used to convey extra information to
-		 // the server and/or tweak certain RPC behaviors.
-		 ClientContext context;
-
-		 // The actual RPC.
-		 Status status = stub_->joinSync(&context, request, &reply);
-
-		 // Act upon its status.
-		 if (status.ok()) {
-				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
-		 } else {
-				std::cout << status.error_code() << ": " << status.error_message()
-								 << std::endl;
-		 }
-	 }
-	 
-	 // Forwards request data to master
-	 void leaveSync(Request r){
-		 // Data we are sending to the server.
-		 Request request = r;
-
-		 // Container for the data we expect from the server.
-		 Reply reply;
-
-		 // Context for the client. It could be used to convey extra information to
-		 // the server and/or tweak certain RPC behaviors.
-		 ClientContext context;
-
-		 // The actual RPC.
-		 Status status = stub_->leaveSync(&context, request, &reply);
-
-		 // Act upon its status.
-		 if (status.ok()) {
-				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
-		 } else {
-				std::cout << status.error_code() << ": " << status.error_message()
-								 << std::endl;
-		 }
-	 }
-	 
     //Forwards messages to the master when it receives a message
     void DataSend(std::string input){
       Reply request;
@@ -496,21 +504,39 @@ public:
       DataSync clientIDs;
       DataSync reply;
       ClientContext context;
+      std::string delimiter = "::";
 
-      for(uint i=0; i<allMessageIDs.size(); i++){
+      for(int i=0; i<allMessageIDs.size(); i++){
         clientIDs.add_ids(allMessageIDs[i]);
       }
 
       Status status = stub_->dataSync(&context, clientIDs, &reply);
 
       if(status.ok()){
-        //GET INFO FROM REPLY
         std::string delimiter = "::";
-        /*std::string nameandmessage = input.substr(2, input.find(delimiter));
-        std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
-        std::string filename = username+".txt";
-        std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
-        user_file << input;*/
+        for(int i = 0; i < reply.messages().size(); i++){
+          std::string message = reply.messages(i);
+          std::string modified = message;
+          modified.erase(0, modified.find(delimiter) + delimiter.length());
+          modified.erase(0, modified.find(delimiter) + delimiter.length());
+          std::string nameandmessage = modified.substr(0, modified.find(delimiter));
+          std::string username = nameandmessage.substr(0, nameandmessage.find(':'));
+          std::string filename = username+".txt";
+          std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
+          user_file << message;
+        }
+        std::cout<<"Database synchronized.";
+      } else{
+        std::cout << status.error_code() << ": " << status.error_message()
+                 << std::endl;
+      }
+    }
+
+    void UpdateDatabase(Request request){
+      Reply reply;
+      ClientContext context;
+      Status status = stub_->UpdateDatabase(&context, request, &reply);
+      if(status.ok()){
         std::cout<<"Database synchronized.";
       } else{
         std::cout << status.error_code() << ": " << status.error_message()
@@ -554,6 +580,9 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       }
       user1->client_following.push_back(user2);
       user2->client_followers.push_back(user1);
+
+      masterCom->UpdateDatabase(convertClient(*user1));
+      masterCom->UpdateDatabase(convertClient(*user2));
       reply->set_msg("Join Successful");
     }
     return Status::OK; 
@@ -579,6 +608,8 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       user1->client_following.erase(find(user1->client_following.begin(), user1->client_following.end(), user2)); 
       // find the user1 in user2 followers and remove
       user2->client_followers.erase(find(user2->client_followers.begin(), user2->client_followers.end(), user1));
+      masterCom->UpdateDatabase(convertClient(*user1));
+      masterCom->UpdateDatabase(convertClient(*user2));
       reply->set_msg("Leave Successful");
     }
     return Status::OK;
@@ -592,6 +623,8 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     if(user_index < 0){
       c.username = username;
       client_db.push_back(c);
+
+      masterCom->UpdateDatabase(convertClient(c));
       reply->set_msg("Login Successful!");
     }
     else{ 
@@ -665,7 +698,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       for(it = c->client_followers.begin(); it!=c->client_followers.end(); it++){
         Client *temp_client = *it;
       	if(temp_client->stream!=0 && temp_client->connected)
-          temp_client->stream->Write(message);
+	  temp_client->stream->Write(message);
         //For each of the current user's followers, put the message in their following.txt file
         std::string temp_username = temp_client->username;
         std::string temp_file = temp_username + "following.txt";
@@ -712,7 +745,6 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
-// Threads /////////////////////////////////////////////////////////////////////
 // Starts a new server process on the same worker port as the crashed process
 void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
@@ -737,6 +769,32 @@ void* startNewServer(void* missingPort){
 		std::cerr << "Error: Could not start new process" << '\n';
 	}
 	return 0;
+}
+// Get an exclusive lock on filename or return -1 (already locked)
+int fileLock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't lock to restart process" << std::endl;
+		return -1;
+	}
+
+	// -1 = File already locked; 0 = file unlocked
+	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
+
+// Opposite of fileLock
+int fileUnlock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't unlock file" << std::endl;
+	}
+
+	// -1 = Error; 0 = file unlocked
+	int rc = flock(fd, LOCK_UN | LOCK_NB);
+	return rc;
 }
 
 // Monitors and restarts other local prcesses if they crash

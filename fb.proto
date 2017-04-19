@@ -47,14 +47,11 @@ service MessengerServer {
 
 // Enables communication between servers
 service ServerChat{
-	// Forward worker join actions to the master severs
-	rpc joinSync (Request) returns (Reply)	{}
-	// Forward worker leave actions to the master severs
-	rpc leaveSync (Request) returns (Reply)	{}
-		// Asks for a reply and restarts the server if no replay is recieved
+	// Asks for a reply and restarts the server if no replay is recieved
 	rpc pulseCheck (Reply) returns (Reply) {}
   rpc DataSend (Reply) returns (Reply) {}
   rpc DataSendFollowers(Request) returns (Reply){}
+  rpc UpdateDatabase (Request) returns (Reply) {}
   rpc dataSync (DataSync) returns (DataSync) {}
 }
 message ListReply {
