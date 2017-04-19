@@ -75,6 +75,7 @@ using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
 class ServerChatClient;
+struct Client;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
@@ -92,6 +93,10 @@ static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
+//Vector that stores every client that has been created
+std::vector<Client> client_db;
+
+// Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -126,9 +131,7 @@ public:
 };
 
 
-//Vector that stores every client that has been created
-std::vector<Client> client_db;
-
+// Utility Functions /////////////////////////////////////////////////////////
 //Helper function used to find a Client object given its username
 int find_user(std::string username){
   int index = 0;
@@ -151,7 +154,7 @@ std::vector<std::string> collectIDs(){
     std::string delimiter = "::";
     unsigned int curLine = 0;
 
-    for(int i = 0; i < client_db.size(); i++){
+    for(uint i = 0; i < client_db.size(); i++){
       std::string filename = client_db[i].username+".txt";
       if(doesFileExist(filename)){
         std::ifstream file(filename);
@@ -167,8 +170,34 @@ std::vector<std::string> collectIDs(){
     return fileIDs;
 }
 
+// Get an exclusive lock on filename or return -1 (already locked)
+int fileLock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't lock to restart process" << std::endl;
+		return -1;
+	}
 
+	// -1 = File already locked; 0 = file unlocked
+	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
 
+// Opposite of fileLock
+int fileUnlock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't unlock file" << std::endl;
+	}
+
+	// -1 = Error; 0 = file unlocked
+	int rc = flock(fd, LOCK_UN | LOCK_NB);
+	return rc;
+}
+
+// gRPC classes ////////////////////////////////////////////////////////////////
 // Recieving side of interserver chat Service
 //MASTER SERVER PORTION
 class ServerChatImpl final : public ServerChat::Service {
@@ -199,7 +228,17 @@ Only goes to the worker that requested it.
 Put it at the start of the chatmessage. It would be good if it was also run
 every X seconds.
 */
-
+	// Record sync info to master database
+	Status joinSync(ServerContext* context, const Request* in, Reply* out)override{
+		
+		return Status::OK;
+	}
+	// Record sync info to master database
+	Status leaveSync(ServerContext* context, const Request* in, Reply* out)override{
+		
+		return Status::OK;
+	}
+	
   //Add user data to master's database
   Status DataSend(ServerContext* context, const Reply* in, Reply* out) override{
     unsigned int curLine = 0;
@@ -280,11 +319,11 @@ every X seconds.
         std::vector<std::string> masterIDs = collectIDs();
         std::vector<std::string> workerIDsToSend;
         std::string found;
-        for(int i=0; i< (in->ids().size()); i++){
+        for (uint i=0; i < in->ids().size(); i++){
           messageIDs.push_back(in->ids(i));
         }
-        for (int i = 0; i < masterIDs.size(); i++) {
-          for (int k = 0; k < messageIDs.size(); k++) {
+        for (uint i = 0; i < masterIDs.size(); i++) {
+          for (uint k = 0; k < messageIDs.size(); k++) {
             if (masterIDs[i] == messageIDs[k]) {
               found = ""; // add this
               break;
@@ -360,13 +399,60 @@ public:
 			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-        //std::cout << "Why didn't Nick Implement this the first time through";
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
 		 }
 	 }
+	 
+	 // Forwards request data to master
+	 void joinSync(Request r){
+		 // Data we are sending to the server.
+		 Request request = r;
 
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->joinSync(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+		 } else {
+				std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
+		 }
+	 }
+	 
+	 // Forwards request data to master
+	 void leaveSync(Request r){
+		 // Data we are sending to the server.
+		 Request request = r;
+
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->leaveSync(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+		 } else {
+				std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
+		 }
+	 }
+	 
     //Forwards messages to the master when it receives a message
     void DataSend(std::string input){
       Reply request;
@@ -411,7 +497,7 @@ public:
       DataSync reply;
       ClientContext context;
 
-      for(int i=0; i<allMessageIDs.size(); i++){
+      for(uint i=0; i<allMessageIDs.size(); i++){
         clientIDs.add_ids(allMessageIDs[i]);
       }
 
@@ -626,6 +712,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Threads /////////////////////////////////////////////////////////////////////
 // Starts a new server process on the same worker port as the crashed process
 void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
@@ -650,32 +737,6 @@ void* startNewServer(void* missingPort){
 		std::cerr << "Error: Could not start new process" << '\n';
 	}
 	return 0;
-}
-// Get an exclusive lock on filename or return -1 (already locked)
-int fileLock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't lock to restart process" << std::endl;
-		return -1;
-	}
-
-	// -1 = File already locked; 0 = file unlocked
-	int rc = flock(fd, LOCK_EX | LOCK_NB);
-	return rc;
-}
-
-// Opposite of fileLock
-int fileUnlock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't unlock file" << std::endl;
-	}
-
-	// -1 = Error; 0 = file unlocked
-	int rc = flock(fd, LOCK_UN | LOCK_NB);
-	return rc;
 }
 
 // Monitors and restarts other local prcesses if they crash
