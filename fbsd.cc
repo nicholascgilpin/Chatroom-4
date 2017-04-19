@@ -628,7 +628,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       c.username = username;
       client_db.push_back(c);
 
-      masterCom->UpdateDatabase(convertClient(c));
+     // masterCom->UpdateDatabase(convertClient(c));
       reply->set_msg("Login Successful!");
     }
     else{ 
