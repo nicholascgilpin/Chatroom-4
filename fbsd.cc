@@ -612,8 +612,8 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       reply->set_confirmation("toMaster");
     }
     else if (isMaster || isLeader){
-      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[1] << std::endl;
-      reply->set_hostname("localhost");
+      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[0] << std::endl;
+      reply->set_hostname(defaultWorkerHostnames[0]);
       reply->set_portnumber("2323");
       reply->set_confirmation("toWorker");
     }
