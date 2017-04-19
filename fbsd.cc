@@ -227,9 +227,9 @@ class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
 		std::string pid = std::to_string(getpid());
-		out->set_msg(workerPort);
+		out->set_msg(std::to_string(server_id));
     if(isMaster && isLeader){
-      out->set_msg(workerPort + " (master)");
+      out->set_msg(std::to_string(server_id) + " (master)");
     }
 		return Status::OK;
 	}
@@ -457,11 +457,11 @@ public:
 		 // Act upon its status.
 		 if (status.ok()) {
 			 sleep(1);
-			  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			  std::cout << "Pulse on server id: " << server_id << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-			  std::cout << "No Pulse " << workerPort << " --> " << reply.msg() << std::endl;
-			  std::cout << status.error_code() << ": " << status.error_message()
+			  std::cout << "No Pulse on server id: " << server_id << " --> " <<
+				status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
 		 }
@@ -755,9 +755,21 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
 	std::string missingWorkerPort = std::to_string(*mwp);
-	std::cout << "Fixing crash on port: " << missingWorkerPort << '\n';
 	std::string cmd = "./fbsd";
-	if (isMaster){
+	
+	// If the leader falls, create a new leading master
+	if ((missingWorkerPort == masterPort) && isMaster){
+		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
+		cmd = cmd + " -p " + port;
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -y " + host_y;
+		cmd = cmd + " -m";
+		cmd = cmd + " -l";
+		cmd = cmd + " -w " + missingWorkerPort;
+	}
+	// Create a non-leader master
+	else if (isMaster){
+		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
 		cmd = cmd + " -p " + port;
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
@@ -765,9 +777,10 @@ void* startNewServer(void* missingPort){
 		cmd = cmd + " -w " + missingWorkerPort;
 	}
 	else{
+		std::cout << "Fixing worker crash on port: " << missingWorkerPort << '\n';
 		cmd = cmd + " -p " + port;
 		cmd = cmd + " -x " + host_x;
-		cmd = cmd + " -r " + masterHostname;
+		cmd = cmd + " -r " + masterHostname; // masterPort hardcoded (4/19/17 1:54pm)
 		cmd = cmd + " -w " + missingWorkerPort;
 	}
 	// THIS IS A BLOCKING FUNCTION!!!!!
@@ -840,7 +853,6 @@ void* heartBeatMonitor(void* invalidMemory){
 				wasDisconnected = false;
 			}
 			else{
-	 			std::cout << "No Pulse " << workerPort << " --> " << possiblyDeadPort << std::endl;
 				wasDisconnected = true;
 				// Connection dead
 				if(	fileLock("heartBeatMonitorLock") == 0){
