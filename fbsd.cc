@@ -360,13 +360,60 @@ public:
 			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-        //std::cout << "Why didn't Nick Implement this the first time through";
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
 		 }
 	 }
+	 
+	 // Forwards request data to master
+	 void joinSync(Request r){
+		 // Data we are sending to the server.
+		 Request request = r;
 
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->joinSync(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+		 } else {
+				std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
+		 }
+	 }
+	 
+	 // Forwards request data to master
+	 void leaveSync(Request r){
+		 // Data we are sending to the server.
+		 Request request = r;
+
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->leaveSync(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+		 } else {
+				std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
+		 }
+	 }
+	 
     //Forwards messages to the master when it receives a message
     void DataSend(std::string input){
       Reply request;
