@@ -151,7 +151,7 @@ std::vector<std::string> collectIDs(){
     std::string delimiter = "::";
     unsigned int curLine = 0;
 
-    for(int i = 0; i < client_db.size(); i++){
+    for(uint i = 0; i < client_db.size(); i++){
       std::string filename = client_db[i].username+".txt";
       if(doesFileExist(filename)){
         std::ifstream file(filename);
@@ -280,11 +280,11 @@ every X seconds.
         std::vector<std::string> masterIDs = collectIDs();
         std::vector<std::string> workerIDsToSend;
         std::string found;
-        for(int i=0; i< (in->ids().size()); i++){
+        for (uint i=0; i < in->ids().size(); i++){
           messageIDs.push_back(in->ids(i));
         }
-        for (int i = 0; i < masterIDs.size(); i++) {
-          for (int k = 0; k < messageIDs.size(); k++) {
+        for (uint i = 0; i < masterIDs.size(); i++) {
+          for (uint k = 0; k < messageIDs.size(); k++) {
             if (masterIDs[i] == messageIDs[k]) {
               found = ""; // add this
               break;
@@ -411,7 +411,7 @@ public:
       DataSync reply;
       ClientContext context;
 
-      for(int i=0; i<allMessageIDs.size(); i++){
+      for(uint i=0; i<allMessageIDs.size(); i++){
         clientIDs.add_ids(allMessageIDs[i]);
       }
 
