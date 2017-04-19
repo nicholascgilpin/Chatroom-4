@@ -579,7 +579,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       for(it = c->client_followers.begin(); it!=c->client_followers.end(); it++){
         Client *temp_client = *it;
       	if(temp_client->stream!=0 && temp_client->connected)
-	  temp_client->stream->Write(message);
+          temp_client->stream->Write(message);
         //For each of the current user's followers, put the message in their following.txt file
         std::string temp_username = temp_client->username;
         std::string temp_file = temp_username + "following.txt";
@@ -612,8 +612,8 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       reply->set_confirmation("toMaster");
     }
     else if (isMaster || isLeader){
-      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[1] << std::endl;
-      reply->set_hostname("localhost");
+      std::cout << "Redirecting client to Worker: " << defaultWorkerHostnames[0] << std::endl;
+      reply->set_hostname(defaultWorkerHostnames[0]);
       reply->set_portnumber("2323");
       reply->set_confirmation("toWorker");
     }
