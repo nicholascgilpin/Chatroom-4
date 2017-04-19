@@ -129,6 +129,7 @@ public:
 //Vector that stores every client that has been created
 std::vector<Client> client_db;
 
+// Utility Functions /////////////////////////////////////////////////////////
 //Helper function used to find a Client object given its username
 int find_user(std::string username){
   int index = 0;
@@ -167,8 +168,34 @@ std::vector<std::string> collectIDs(){
     return fileIDs;
 }
 
+// Get an exclusive lock on filename or return -1 (already locked)
+int fileLock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't lock to restart process" << std::endl;
+		return -1;
+	}
 
+	// -1 = File already locked; 0 = file unlocked
+	int rc = flock(fd, LOCK_EX | LOCK_NB);
+	return rc;
+}
 
+// Opposite of fileLock
+int fileUnlock(std::string filename){
+	// Create file if needed; open otherwise
+	int fd = open(filename.c_str(), O_RDWR, 0666);
+	if (fd < 0){
+		std::cout << "Couldn't unlock file" << std::endl;
+	}
+
+	// -1 = Error; 0 = file unlocked
+	int rc = flock(fd, LOCK_UN | LOCK_NB);
+	return rc;
+}
+
+// gRPC classes ////////////////////////////////////////////////////////////////
 // Recieving side of interserver chat Service
 //MASTER SERVER PORTION
 class ServerChatImpl final : public ServerChat::Service {
@@ -199,7 +226,17 @@ Only goes to the worker that requested it.
 Put it at the start of the chatmessage. It would be good if it was also run
 every X seconds.
 */
-
+	// Record sync info to master database
+	Status joinSync(ServerContext* context, const Request* in, Reply* out)override{
+		
+		return Status::OK;
+	}
+	// Record sync info to master database
+	Status leaveSync(ServerContext* context, const Request* in, Reply* out)override{
+		
+		return Status::OK;
+	}
+	
   //Add user data to master's database
   Status DataSend(ServerContext* context, const Reply* in, Reply* out) override{
     unsigned int curLine = 0;
@@ -673,6 +710,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 
 };
 
+// Threads /////////////////////////////////////////////////////////////////////
 // Starts a new server process on the same worker port as the crashed process
 void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
@@ -697,32 +735,6 @@ void* startNewServer(void* missingPort){
 		std::cerr << "Error: Could not start new process" << '\n';
 	}
 	return 0;
-}
-// Get an exclusive lock on filename or return -1 (already locked)
-int fileLock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR | O_CREAT, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't lock to restart process" << std::endl;
-		return -1;
-	}
-
-	// -1 = File already locked; 0 = file unlocked
-	int rc = flock(fd, LOCK_EX | LOCK_NB);
-	return rc;
-}
-
-// Opposite of fileLock
-int fileUnlock(std::string filename){
-	// Create file if needed; open otherwise
-	int fd = open(filename.c_str(), O_RDWR, 0666);
-	if (fd < 0){
-		std::cout << "Couldn't unlock file" << std::endl;
-	}
-
-	// -1 = Error; 0 = file unlocked
-	int rc = flock(fd, LOCK_UN | LOCK_NB);
-	return rc;
 }
 
 // Monitors and restarts other local prcesses if they crash
