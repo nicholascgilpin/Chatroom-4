@@ -6,11 +6,11 @@ echo ""
 unreliableServer1="lenss-comp4.cse.tamu.edu"
 unreliableServer2="lenss-comp3.cse.tamu.edu" #@TODO: Add another domain name when availible
 
-./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -l -w 10001 &
+./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -l -w 10001 -i 0 &
 export pid1=$! # Get pid of last background process
-./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -w 10002 -c 10001 &
+./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -w 10002 -i 1 &
 export pid2=$! # Get pid of last background process
-./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -w 10003 -c 10001 &
+./fbsd -x $unreliableServer1 -y $unreliableServer2 -m -w 10003 -i 2 &
 export pid3=$! # Get pid of last background process
 
 echo "-------------------------------------------------------------------------"

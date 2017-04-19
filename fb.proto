@@ -51,6 +51,7 @@ service ServerChat{
 	rpc pulseCheck (Reply) returns (Reply) {}
   rpc DataSend (Reply) returns (Reply) {}
   rpc DataSendFollowers(Request) returns (Reply){}
+  rpc UpdateDatabase (Request) returns (Reply) {}
   rpc dataSync (DataSync) returns (DataSync) {}
 }
 message ListReply {
