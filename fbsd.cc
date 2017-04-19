@@ -92,7 +92,7 @@ std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
 //Vector that stores every client that has been created
-std::vector<Client> client_db;
+
 int server_id = 0;
 // Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
