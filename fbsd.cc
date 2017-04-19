@@ -82,7 +82,7 @@ bool isLeader = false;
 std::string port = "2323"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
-std::string masterPort = "10002"; // Port that leading master monitors
+std::string masterPort = "10001"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
@@ -90,7 +90,7 @@ std::vector<ServerChatClient> localWorkersComs;
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
-std::string masterHostname = "lenss-comp1"; // Port for this process to contact
+std::string masterHostname = "localhost"; // MUST BE LOCALHOST! (for masterCom in heartBeat)
 //Vector that stores every client that has been created
 
 int server_id = 0;
@@ -228,8 +228,8 @@ class ServerChatImpl final : public ServerChat::Service {
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
 		std::string pid = std::to_string(getpid());
 		out->set_msg(workerPort);
-    if(isMaster){
-      out->set_msg("You're on the master");
+    if(isMaster && isLeader){
+      out->set_msg(workerPort + " (master)");
     }
 		return Status::OK;
 	}
@@ -440,6 +440,7 @@ public:
 	 // Checks if other endpoint is responsive
 	 bool pulseCheck() {
 		 // Data we are sending to the server.
+		 
 		 Reply request;
 		 request.set_msg("a");
 
@@ -455,10 +456,11 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			 sleep(1);
+			  std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-        //std::cout << "Why didn't Nick Implement this the first time through";
+			  std::cout << "No Pulse " << workerPort << " --> " << reply.msg() << std::endl;
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
@@ -806,6 +808,22 @@ void* heartBeatMonitor(void* invalidMemory){
 	pthread_t startNewServer_tid = -1;
 	bool wasDisconnected = false;
 	while(true){
+		
+		
+		//@TODO: What if reonnecting just works and I need to focus on restarting?
+		sleep(1); //debug
+		bool pulse = masterCom->pulseCheck();
+		if(!pulse){
+			std::cout << server_id << ": Reconnecting to master..." << '\n';
+			sleep(1);
+			masterCom = new ServerChatClient(grpc::CreateChannel(
+				masterHostname + ":" + masterPort, grpc::InsecureChannelCredentials()));
+			if (masterCom->pulseCheck()) {
+				std::cout << "Reconnected: " << server_id <<"--> Master" << '\n';
+			} else {
+			std::cout << server_id << ": Failed to reconnect" << '\n';
+			}
+		}
 		for (size_t i = 0; i < localWorkersComs.size(); i++) {
 			std::string possiblyDeadPort = defaultWorkerPorts[i];
 			int pdp = atoi(possiblyDeadPort.c_str());
@@ -957,7 +975,7 @@ int main(int argc, char** argv) {
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
-	
+	std::cout << "Debug masterHostname = " << masterHostname << '\n';
 	pthread_t thread_id, heartbeat_tid = -1;
 	sleep(1);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
