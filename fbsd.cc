@@ -93,7 +93,7 @@ std::string host_y = "";
 std::string masterHostname = "localhost"; // MUST BE LOCALHOST! (for masterCom in heartBeat)
 //Vector that stores every client that has been created
 
-int server_id = 0;
+static int server_id = 0;
 // Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -756,32 +756,78 @@ void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
 	std::string missingWorkerPort = std::to_string(*mwp);
 	std::string cmd = "./fbsd";
+	std::string id = "";
+	int id_rank = 0; // <3 = masters, <6 = server 1, >5 = server 2
+	// Sad Hack to figure out id
+	if(server_id < 3){
+		// master
+		id_rank = 0;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
+	else if (server_id > 5){
+		// server 2
+		id_rank = 6;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
+	else{
+		// server 1
+		id_rank = 3;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
 	
+	id = std::to_string(id_rank);
 	// If the leader falls, create a new leading master
 	if ((missingWorkerPort == masterPort) && isMaster){
 		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
-		cmd = cmd + " -p " + port;
+		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
 		cmd = cmd + " -m";
 		cmd = cmd + " -l";
 		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
 	}
 	// Create a non-leader master
 	else if (isMaster){
 		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
-		cmd = cmd + " -p " + port;
+		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
 		cmd = cmd + " -m";
 		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
 	}
 	else{
 		std::cout << "Fixing worker crash on port: " << missingWorkerPort << '\n';
-		cmd = cmd + " -p " + port;
+		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -r " + masterHostname; // masterPort hardcoded (4/19/17 1:54pm)
 		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
 	}
 	// THIS IS A BLOCKING FUNCTION!!!!!
 	if(system(cmd.c_str()) == -1){
@@ -841,7 +887,6 @@ void* heartBeatMonitor(void* invalidMemory){
 			std::string possiblyDeadPort = defaultWorkerPorts[i];
 			int pdp = atoi(possiblyDeadPort.c_str());
 			std::string contactInfo = "localhost:"+ possiblyDeadPort;
-
 			
 			if(localWorkersComs[i].pulseCheck()){
 				// Connection alive
