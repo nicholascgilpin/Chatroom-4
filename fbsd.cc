@@ -75,6 +75,7 @@ using grpc::Channel;
 using grpc::ClientContext;
 // Forwards ////////////////////////////////////////////////////////////////////
 class ServerChatClient;
+struct Client;
 
 // Global Variables ////////////////////////////////////////////////////////////
 bool isMaster = false;
@@ -92,6 +93,10 @@ static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
 std::string masterHostname = "lenss-comp1"; // Port for this process to contact
+//Vector that stores every client that has been created
+std::vector<Client> client_db;
+
+// Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
   std::string username;
@@ -125,9 +130,6 @@ public:
 	virtual ~vectorClock ();
 };
 
-
-//Vector that stores every client that has been created
-std::vector<Client> client_db;
 
 // Utility Functions /////////////////////////////////////////////////////////
 //Helper function used to find a Client object given its username
