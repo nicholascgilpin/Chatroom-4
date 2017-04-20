@@ -233,6 +233,13 @@ class ServerChatImpl final : public ServerChat::Service {
     }
 		return Status::OK;
 	}
+	
+	// gets the id of a connection
+	Status idCheck(ServerContext* context, const Reply* in, Reply* out) override{
+		std::string pid = std::to_string(getpid());
+		out->set_msg(std::to_string(server_id));
+		return Status::OK;
+	}
 //All workers send to master, master writes to its own database if the message isnt already there
   //Thats what datasend does
 //When a worker requests a dataSync, worker sends IDs of all its message to the master
@@ -461,6 +468,34 @@ public:
         //std::cout << "Why didn't Nick Implement this the first time through";
 			  std::cout << status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
+			return false;
+		 }
+	 }
+
+	 // Checks if other endpoint is responsive
+	 bool idCheck() {
+		 // Data we are sending to the server.
+		 Reply request;
+		 request.set_msg("-1"); //error
+
+		 // Container for the data we expect from the server.
+		 Reply reply;
+
+		 // Context for the client. It could be used to convey extra information to
+		 // the server and/or tweak certain RPC behaviors.
+		 ClientContext context;
+
+		 // The actual RPC.
+		 Status status = stub_->idCheck(&context, request, &reply);
+
+		 // Act upon its status.
+		 if (status.ok()) {
+				//std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			 return true;
+		 } else {
+				 //std::cout << "Why didn't Nick Implement this the first time through";
+				std::cout << status.error_code() << ": " << status.error_message()
+								 << std::endl;
 			return false;
 		 }
 	 }
