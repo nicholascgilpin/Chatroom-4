@@ -82,7 +82,7 @@ bool isLeader = false;
 std::string port = "2323"; // Port for clients to connect to
 std::string workerPort = "8888"; // Port for workers to connect to
 std::string workerToConnect = "8889"; // Port for this process to contact
-std::string masterPort = "10002"; // Port that leading master monitors
+std::string masterPort = "10001"; // Port that leading master monitors
 std::vector<std::string> defaultWorkerPorts;
 std::vector<std::string> defaultWorkerHostnames;
 std::vector<ServerChatClient> localWorkersComs;
@@ -90,10 +90,10 @@ std::vector<ServerChatClient> localWorkersComs;
 static ServerChatClient* masterCom; // Connection to leading master
 std::string host_x = "";
 std::string host_y = "";
-std::string masterHostname = "lenss-comp1"; // Port for this process to contact
+std::string masterHostname = "localhost"; // MUST BE LOCALHOST! (for masterCom in heartBeat)
 //Vector that stores every client that has been created
 
-int server_id = 0;
+static int server_id = 0;
 // Utility Classes ////////////////////////////////////////////////////////////
 //Client struct that holds a user's username, followers, and users they follow
 struct Client {
@@ -227,9 +227,9 @@ class ServerChatImpl final : public ServerChat::Service {
 	// Asks for a reply and restarts the server if no replay is recieved
 	Status pulseCheck(ServerContext* context, const Reply* in, Reply* out) override{
 		std::string pid = std::to_string(getpid());
-		out->set_msg(workerPort);
-    if(isMaster){
-      out->set_msg("You're on the master");
+		out->set_msg(std::to_string(server_id));
+    if(isMaster && isLeader){
+      out->set_msg(std::to_string(server_id) + " (master)");
     }
 		return Status::OK;
 	}
@@ -447,6 +447,7 @@ public:
 	 // Checks if other endpoint is responsive
 	 bool pulseCheck() {
 		 // Data we are sending to the server.
+		 
 		 Reply request;
 		 request.set_msg("a");
 
@@ -462,11 +463,12 @@ public:
 
 		 // Act upon its status.
 		 if (status.ok()) {
-			  //std::cout << "Pulse " << workerPort << " --> " << reply.msg() << std::endl;
+			 sleep(1);
+			  std::cout << "Pulse on server id: " << server_id << " --> " << reply.msg() << std::endl;
 			 return true;
 		 } else {
-        //std::cout << "Why didn't Nick Implement this the first time through";
-			  std::cout << status.error_code() << ": " << status.error_message()
+			  std::cout << "No Pulse on server id: " << server_id << " --> " <<
+				status.error_code() << ": " << status.error_message()
 			 					 << std::endl;
 			return false;
 		 }
@@ -788,20 +790,79 @@ class MessengerServiceImpl final : public MessengerServer::Service {
 void* startNewServer(void* missingPort){
 	int* mwp = (int*) missingPort;
 	std::string missingWorkerPort = std::to_string(*mwp);
-	std::cout << "Fixing crash on port: " << missingWorkerPort << '\n';
 	std::string cmd = "./fbsd";
-	if (isMaster){
-		cmd = cmd + " -p " + port;
+	std::string id = "";
+	int id_rank = 0; // <3 = masters, <6 = server 1, >5 = server 2
+	// Sad Hack to figure out id
+	if(server_id < 3){
+		// master
+		id_rank = 0;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
+	else if (server_id > 5){
+		// server 2
+		id_rank = 6;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
+	else{
+		// server 1
+		id_rank = 3;
+		if (missingWorkerPort == "10001") {
+			// keep id
+		} else if (missingWorkerPort == "10002") {
+			id_rank = id_rank + 1;
+		} else if (missingWorkerPort == "10003")  {
+			id_rank = id_rank + 2;
+		} else {
+			std::cerr << "Error: Couldn't determine crashed process id" << '\n';
+		}
+	}
+	
+	id = std::to_string(id_rank);
+	// If the leader falls, create a new leading master
+	if ((missingWorkerPort == masterPort) && isMaster){
+		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
+		cmd = cmd + " -p " + port; //port is a global varaible
+		cmd = cmd + " -x " + host_x;
+		cmd = cmd + " -y " + host_y;
+		cmd = cmd + " -m";
+		cmd = cmd + " -l";
+		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
+	}
+	// Create a non-leader master
+	else if (isMaster){
+		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
+		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
 		cmd = cmd + " -m";
 		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
 	}
 	else{
-		cmd = cmd + " -p " + port;
+		std::cout << "Fixing worker crash on port: " << missingWorkerPort << '\n';
+		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
-		cmd = cmd + " -r " + masterHostname;
+		cmd = cmd + " -r " + masterHostname; // masterPort hardcoded (4/19/17 1:54pm)
 		cmd = cmd + " -w " + missingWorkerPort;
+		cmd = cmd + " -i " + id;
 	}
 	// THIS IS A BLOCKING FUNCTION!!!!!
 	if(system(cmd.c_str()) == -1){
@@ -865,11 +926,26 @@ void* heartBeatMonitor(void* invalidMemory){
 	pthread_t startNewServer_tid = -1;
 	bool wasDisconnected = false;
 	while(true){
+		
+		
+		//@TODO: What if reonnecting just works and I need to focus on restarting?
+		sleep(1); //debug
+		bool pulse = masterCom->pulseCheck();
+		if(!pulse){
+			std::cout << server_id << ": Reconnecting to master..." << '\n';
+			sleep(1);
+			masterCom = new ServerChatClient(grpc::CreateChannel(
+				masterHostname + ":" + masterPort, grpc::InsecureChannelCredentials()));
+			if (masterCom->pulseCheck()) {
+				std::cout << "Reconnected: " << server_id <<"--> Master" << '\n';
+			} else {
+			std::cout << server_id << ": Failed to reconnect" << '\n';
+			}
+		}
 		for (size_t i = 0; i < localWorkersComs.size(); i++) {
 			std::string possiblyDeadPort = defaultWorkerPorts[i];
 			int pdp = atoi(possiblyDeadPort.c_str());
 			std::string contactInfo = "localhost:"+ possiblyDeadPort;
-
 			
 			if(localWorkersComs[i].pulseCheck()){
 				// Connection alive
@@ -881,7 +957,6 @@ void* heartBeatMonitor(void* invalidMemory){
 				wasDisconnected = false;
 			}
 			else{
-	 			std::cout << "No Pulse " << workerPort << " --> " << possiblyDeadPort << std::endl;
 				wasDisconnected = true;
 				// Connection dead
 				if(electionLock()){
@@ -1017,7 +1092,7 @@ int main(int argc, char** argv) {
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
-	
+	std::cout << "Debug masterHostname = " << masterHostname << '\n';
 	pthread_t thread_id, heartbeat_tid = -1;
 	sleep(1);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
