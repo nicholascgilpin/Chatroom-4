@@ -929,7 +929,6 @@ void* heartBeatMonitor(void* invalidMemory){
 		
 		
 		//@TODO: What if reonnecting just works and I need to focus on restarting?
-		sleep(1); //debug
 		bool pulse = masterCom->pulseCheck();
 		if(!pulse){
 			std::cout << server_id << ": Reconnecting to master..." << '\n';
@@ -1092,7 +1091,7 @@ int main(int argc, char** argv) {
 	  std::cerr << "Invalid Command Line Argument\n";
     }
   }
-	std::cout << "Debug masterHostname = " << masterHostname << '\n';
+
 	pthread_t thread_id, heartbeat_tid = -1;
 	sleep(1);
 	pthread_create(&thread_id, NULL, &RunServerCom, (void*) NULL);
