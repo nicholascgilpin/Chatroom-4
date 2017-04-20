@@ -109,15 +109,14 @@ struct Client {
   }
 };
 
+// Keeps a list of times from each server; SHOULD ONLY BE UPDATED IN CHAT!
 class VectorClock {
 	private:
 		/* data */
 		std::vector<int> _clk;
 		int _unique_server_id;
     int _logicalClock;
-
-		// @TODO: Write time stamp comparator https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/timestamp
-		// @TODO: Test all vector clock functions functions
+		pthread_mutex_t updateLock;
 	public:
 		// vector size is equal to the total count of servers
 		// unique_server_id is a unique id across the entire distributed system
@@ -125,6 +124,7 @@ class VectorClock {
 			_unique_server_id = unique_server_id;
 			_clk = std::vector<int>(vectorSize);
       _logicalClock = 1;
+			pthread_mutex_init(&updateLock, NULL);
 		}
 
 		// A clock v is < w iff for all i v[i] < w[i]
@@ -183,10 +183,13 @@ class VectorClock {
 
 		// Updates this server's section of the vector Clock
 		std::vector<int> updateClock(){
+			std::vector<int> copyOfClock;
+			pthread_mutex_lock(&updateLock);
 			_logicalClock = _logicalClock + 1;
-
 			this->_clk[this->_unique_server_id] = _logicalClock;
-			return this->_clk;
+			copyOfClock = this->_clk;
+			pthread_mutex_unlock(&updateLock);
+			return copyOfClock;
 		}
 
 		// Combines two vectors by keeping the largest element for each position
@@ -209,12 +212,10 @@ class VectorClock {
       temp = "]";
       return temp;
     }
-
+		
 		void print(){
 			std::cout << "ID: " << this->_unique_server_id << " Size: " << this->_clk.size() << std::endl;
-			for (size_t i = 0; i < this->_clk.size(); i++) {
-				std::cout << '[' << i << "]=" << this->_clk[i] << '\n';
-			}
+			std::cout << this->to_string();
 		}
 
 		// Previous tests saved in case their needed in the future
