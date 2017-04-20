@@ -764,7 +764,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
     std::string portnumber = credentials->portnumber();
 
     if(!isMaster){
-      std::cout << "Redirecting client to Master: " << masterPort << std::endl;
+      std::cout << "Redirecting client to Leader: " << masterPort << std::endl;
       reply->set_hostname(masterHostname);
       reply->set_portnumber("2323");
       reply->set_confirmation("toMaster");
@@ -774,7 +774,7 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       reply->set_hostname(defaultWorkerHostnames[0]);
       reply->set_portnumber("2323");
       reply->set_confirmation("toWorker");
-    }
+    } //It will write data to all servers, however it will only chat between users connected to the same server
     else{
       std::cout<<"There's been an error in the redirect: SendCredentials.'\n'";
       return Status::CANCELLED;
@@ -809,6 +809,30 @@ void* startNewServer(void* missingPort){
 	}
 	return 0;
 }
+
+// Get an exclusive lock on filename or return -1 (already locked)
+//write a new function called electionLock that has none of the same code as the file lock
+//inside of the electionLock, figure out if you have the highest ID on the machine
+//If I had the highest ID, return true, if not, false
+//Down in the heartbeat, start a new server thread inside of an if(electionlock) that way only the person who wins the
+//election does it
+//
+bool electionLock(){
+  for (size_t i = 0; i < localWorkersComs.size(); i++) {
+    int temp = localWorkersComs[i].idCheck();
+    if (server_id > temp){
+      isLeader = true;
+    }
+    else{
+      isLeader = false;
+    }
+  }
+  if(isLeader)
+    std::cout<<server_id + " Is Leader.";
+  return isLeader;
+}
+
+
 // Get an exclusive lock on filename or return -1 (already locked)
 int fileLock(std::string filename){
 	// Create file if needed; open otherwise
@@ -860,13 +884,14 @@ void* heartBeatMonitor(void* invalidMemory){
 	 			std::cout << "No Pulse " << workerPort << " --> " << possiblyDeadPort << std::endl;
 				wasDisconnected = true;
 				// Connection dead
-				if(	fileLock("heartBeatMonitorLock") == 0){
+				if(electionLock()){
 					// Start new process if file was unlocked
 					pthread_create(&startNewServer_tid, NULL, &startNewServer, (void*) &pdp);
 					
-					if(fileUnlock("heartBeatMonitorLock") == -1){
-						std::cerr << "Error unlocking heartBeatMonitorLock file" << '\n';
-					}
+					// if(fileUnlock("heartBeatMonitorLock") == -1){
+					// 	std::cerr << "Error unlocking heartBeatMonitorLock file" << '\n';
+					// }
+
 					std::cout << "Peer: " << workerPort << " reconnecting..." << '\n';
 					sleep(1); 
 					//  update connection info reguardless of who restarted  it
