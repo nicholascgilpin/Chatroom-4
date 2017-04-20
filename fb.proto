@@ -30,9 +30,6 @@
 syntax = "proto3";
 
 package hw2;
-
-import "google/protobuf/timestamp.proto";
-
 // The messenger service definition.
 service MessengerServer {
 
@@ -81,8 +78,8 @@ message Message {
   string username = 2;
   //Message from the user
   string msg = 3;
-  //Time the message was sent
-  google.protobuf.Timestamp timestamp = 4;
+  //Time the message was sent (vector clock)
+  repeated int32 timestamp = 4;
 }
 
 message DataSync {

@@ -36,7 +36,6 @@
 
 #include <ctime>
 
-#include <google/protobuf/timestamp.pb.h>
 #include <google/protobuf/duration.pb.h>
 
 #include <fstream>
@@ -126,7 +125,16 @@ class VectorClock {
       _logicalClock = 1;
 			pthread_mutex_init(&updateLock, NULL);
 		}
-
+		
+		// Create clock from Message
+		VectorClock(Message m){
+			_unique_server_id = std::stoi(m.id());
+				for (size_t i = 0; i < this->_clk.size(); i++) {
+					_clk.push_back(m.timestamp(i));
+				}
+			_logicalClock = m.timestamp(_unique_server_id);
+			pthread_mutex_init(&updateLock, NULL);
+		}
 		// A clock v is < w iff for all i v[i] < w[i]
 		bool operator<(const VectorClock &left){
 			int result = -1;
@@ -771,8 +779,12 @@ class MessengerServiceImpl final : public MessengerServer::Service {
       //Write the current message to "username.txt"
       std::string filename = username+".txt";
       std::ofstream user_file(filename,std::ios::app|std::ios::out|std::ios::in);
-      google::protobuf::Timestamp temptime = message.timestamp();
-      std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
+
+      // Increment clock and record message time
+			VectorClock recieved = VectorClock(message);
+			serverClock->updateClock();
+			serverClock->mergeClocks(recieved);
+      std::string time = serverClock->to_string();
       std::string fileinput = unique_id +" :: "+time+" :: "+message.username()+":"+message.msg()+"\n";
  //     messageIDs.push_back(unique_id);
       //"Set Stream" is the default message from the client to initialize the stream
