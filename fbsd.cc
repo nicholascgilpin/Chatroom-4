@@ -837,7 +837,7 @@ void* startNewServer(void* missingPort){
 	id = std::to_string(id_rank);
 	// If the leader falls, create a new leading master
 	if ((missingWorkerPort == masterPort) && isMaster){
-		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
+		std::cout <<server_id << ": " << "Fixing master crash on port: " << missingWorkerPort << '\n';
 		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
@@ -848,7 +848,7 @@ void* startNewServer(void* missingPort){
 	}
 	// Create a non-leader master
 	else if (isMaster){
-		std::cout << "Fixing master crash on port: " << missingWorkerPort << '\n';
+		std::cout <<server_id << ": " << "Fixing master crash on port: " << missingWorkerPort << '\n';
 		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -y " + host_y;
@@ -857,7 +857,7 @@ void* startNewServer(void* missingPort){
 		cmd = cmd + " -i " + id;
 	}
 	else{
-		std::cout << "Fixing worker crash on port: " << missingWorkerPort << '\n';
+		std::cout <<server_id << ": " << "Fixing worker crash on port: " << missingWorkerPort << '\n';
 		cmd = cmd + " -p " + port; //port is a global varaible
 		cmd = cmd + " -x " + host_x;
 		cmd = cmd + " -r " + masterHostname; // masterPort hardcoded (4/19/17 1:54pm)
@@ -879,6 +879,9 @@ void* startNewServer(void* missingPort){
 //election does it
 //
 bool electionLock(){
+  int maxid = -1;
+  //if id > maxid, maxid = id
+
   for (size_t i = 0; i < localWorkersComs.size(); i++) {
     int temp = localWorkersComs[i].idCheck();
     if (server_id > temp){
