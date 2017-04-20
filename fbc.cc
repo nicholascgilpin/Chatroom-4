@@ -70,10 +70,6 @@ Message MakeMessage(const std::string& username, const std::string& msg) {
   m.set_username(username);
   m.set_msg(msg);
   m.set_id(generateId(m));
-  google::protobuf::Timestamp* timestamp = new google::protobuf::Timestamp();
-  timestamp->set_seconds(time(NULL));
-  timestamp->set_nanos(0);
-  m.set_allocated_timestamp(timestamp);
   return m;
 }
 
